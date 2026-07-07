@@ -1,0 +1,9 @@
+# Build output
+build/
+
+# VS Code settings cache
+.vscode/.cache
+.vscode/compile_commands.json
+
+# Kimix cache
+.kimix_cache

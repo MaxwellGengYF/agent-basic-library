@@ -1,0 +1,9 @@
+[submodule "src/ext/xxhash"]
+	path = src/ext/xxhash
+	url = https://github.com/Cyan4973/xxHash.git
+[submodule "src/ext/mimalloc"]
+	path = src/ext/mimalloc
+	url = https://github.com/LuisaGroup/mimalloc.git
+[submodule "src/ext/yyjson"]
+	path = src/ext/yyjson
+	url = https://github.com/ibireme/yyjson

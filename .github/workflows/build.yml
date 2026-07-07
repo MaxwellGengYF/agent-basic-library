@@ -1,0 +1,68 @@
+name: build
+
+on: [push, pull_request]
+
+jobs:
+  build-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [gcc, clang]
+        config: [release, debug]
+    name: Ubuntu ${{ matrix.config }} / ${{ matrix.toolchain }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: "Install Dependencies"
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install build-essential
+      - name: "Setup XMake"
+        uses: xmake-io/github-action-setup-xmake@v1
+      - name: "Configure"
+        run: xmake f -p linux -a x86_64 --toolchain=${{ matrix.toolchain }} -m ${{ matrix.config }} -c -y
+      - name: "Build"
+        run: xmake
+
+  build-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [release, debug]
+        compiler: [msvc, clang-cl]
+    name: Windows ${{ matrix.config }} / ${{ matrix.compiler }}
+    runs-on: windows-2025
+    concurrency:
+      group: ${{ github.ref }}-${{ github.base_ref }}-${{ github.head_ref }}-windows-${{ matrix.config }}-${{ matrix.compiler }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: "Setup XMake"
+        uses: xmake-io/github-action-setup-xmake@v1
+      - name: "Configure"
+        run: xmake f -p windows -a x64 --toolchain=${{ matrix.compiler }} -m ${{ matrix.config }} -c -y
+      - name: "Build"
+        run: xmake
+
+  build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: [clang]
+        config: [release, debug]
+    name: macOS ${{ matrix.config }} / ${{ matrix.toolchain }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: "Setup XMake"
+        uses: xmake-io/github-action-setup-xmake@v1
+      - name: "Configure"
+        run: xmake f -p macosx -a arm64 --toolchain=${{ matrix.toolchain }} -m ${{ matrix.config }} -c -y
+      - name: "Build"
+        run: xmake
