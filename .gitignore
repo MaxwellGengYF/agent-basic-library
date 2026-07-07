@@ -7,3 +7,4 @@ build/
 
 # Kimix cache
 .kimix_cache
+.xmake

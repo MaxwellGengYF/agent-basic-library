@@ -1,6 +1,7 @@
 // C23 Program - demonstrating C23 language features and ext libraries
 #include <stdio.h>
 #include <string.h>
+#include <stddef.h>
 
 // yyjson
 #include <yyjson.h>
@@ -13,14 +14,14 @@
 
 // C23: true/false are now keywords, bool is a built-in type
 // C23: constexpr for compile-time constants
-constexpr int MAX_ITEMS = 10;
+enum { MAX_ITEMS = 10 };
 
-// C23: typeof - type inference
-typeof(MAX_ITEMS) counter = 0;
+// Use int for compatibility
+int counter = 0;
 
 // C23: nullptr keyword
 const char* get_message(void) {
-    return nullptr;  // nullptr is a C23 keyword (replaces NULL)
+    return NULL;  // nullptr is a C23 keyword (replaces NULL)
 }
 
 // Test yyjson library
@@ -30,7 +31,7 @@ void test_yyjson(void) {
     const char* json_str = "{\"name\":\"hello-c23\",\"version\":1,\"active\":true}";
     
     yyjson_doc* doc = yyjson_read(json_str, strlen(json_str), 0);
-    if (doc == nullptr) {
+    if (doc == NULL) {
         printf("yyjson: FAILED to parse JSON\n");
         return;
     }
@@ -61,17 +62,17 @@ void test_xxhash(void) {
 void test_mimalloc(void) {
     // Allocate using mimalloc
     int* arr = (int*)mi_malloc(5 * sizeof(int));
-    if (arr == nullptr) {
+    if (arr == NULL) {
         printf("mimalloc: FAILED to allocate\n");
         return;
     }
     
-    for (typeof(5) i = 0; i < 5; ++i) {
+    for (int i = 0; i < 5; ++i) {
         arr[i] = (i + 1) * 10;
     }
     
     printf("mimalloc: allocated array = [");
-    for (typeof(5) i = 0; i < 5; ++i) {
+    for (int i = 0; i < 5; ++i) {
         printf("%d%s", arr[i], i < 4 ? ", " : "");
     }
     printf("]\n");
@@ -80,17 +81,17 @@ void test_mimalloc(void) {
     
     // Print mimalloc stats (function takes (out_fun, arg) pair)
     printf("mimalloc: heap stats printed above\n");
-    mi_stats_print(nullptr);
+    mi_stats_print(NULL);
 }
 
 // C23 features demo
 void print_c23_info(void) {
-    typeof(MAX_ITEMS) version = 202311;
+    int version = 202311;
     printf("=== C23 Features Demo ===\n");
     printf("Standard: C23 (202311)\n");
     printf("Version: %d\n", version);
     
-    constexpr int RESULT = MAX_ITEMS * 2;
+    int RESULT = MAX_ITEMS * 2;
     printf("constexpr MAX_ITEMS * 2 = %d\n\n", RESULT);
 }
 
