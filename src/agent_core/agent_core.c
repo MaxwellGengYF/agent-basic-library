@@ -4,13 +4,8 @@
  * consumers can free strings that were allocated by the native library.
  */
 
+#include "agent_config.h"
 #include <stdlib.h>
-
-#ifdef _WIN32
-    #define AGENT_CORE_API __declspec(dllexport)
-#else
-    #define AGENT_CORE_API __attribute__((visibility("default")))
-#endif
 
 /* Release memory allocated by any agent_core API function.
  * Python callers MUST use this instead of libc.free() to ensure the same

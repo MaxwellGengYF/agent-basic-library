@@ -8,86 +8,22 @@ local function enable_msvc_compat(target)
     end
 end
 
--- Feature: message_sanitization (shared library)
-target("message_sanitization")
-    set_kind("shared")
-    add_files("message_sanitization/*.c")
-    add_includedirs("include", {public = true})
-    add_includedirs("message_sanitization/include", {public = true})
-    add_defines("AGENT_MESSAGE_SANITIZATION_EXPORT_DLL")
-    add_deps("yyjson")
-    set_languages("c11")
-    set_warnings("all", "error")
-    on_load(function(target)
-        enable_msvc_compat(target)
-        target:add("cxflags", "/utf-8", {tools = "cl"})
-    end)
-
--- Feature: prompt_builder (shared library)
-target("prompt_builder")
-    set_kind("shared")
-    add_files("prompt_builder/*.c")
-    add_includedirs("include", {public = true})
-    add_includedirs("prompt_builder/include", {public = true})
-    add_defines("AGENT_PROMPT_BUILDER_EXPORT_DLL")
-    set_languages("c11")
-    set_warnings("all", "error")
-    on_load(function(target)
-        enable_msvc_compat(target)
-        target:add("cxflags", "/utf-8", {tools = "cl"})
-    end)
-
--- Feature: conversation_loop (shared library)
-target("conversation_loop")
-    set_kind("shared")
-    add_files("conversation_loop/*.c")
-    add_includedirs("include", {public = true})
-    add_includedirs("conversation_loop/include", {public = true})
-    add_defines("AGENT_CONVERSATION_LOOP_EXPORT_DLL")
-    add_deps("yyjson")
-    set_languages("c11")
-    set_warnings("all", "error")
-    on_load(function(target)
-        enable_msvc_compat(target)
-        target:add("cxflags", "/utf-8", {tools = "cl"})
-    end)
-
--- Feature: context_compressor (shared library)
-target("context_compressor")
-    set_kind("shared")
-    add_files("context_compressor/*.c")
-    add_includedirs("include", {public = true})
-    add_includedirs("context_compressor/include", {public = true})
-    add_defines("AGENT_CONTEXT_COMPRESSOR_EXPORT_DLL")
-    add_deps("yyjson", "xxhash")
-    set_languages("c11")
-    set_warnings("all", "error")
-    on_load(function(target)
-        enable_msvc_compat(target)
-        target:add("cxflags", "/utf-8", {tools = "cl"})
-    end)
-
--- Unified shared library exposing all feature APIs for Python/FFI consumers.
--- It compiles the same feature sources so that a single DLL/SO/DYLIB carries
--- every public symbol, independent of the per-feature shared libraries used by
--- the C test suite.
+-- Unified shared library exposing all feature APIs.
 target("agent_core")
     set_kind("shared")
     set_basename("agent_core")
-    add_files("agent_core/agent_core.c")
-    add_files("message_sanitization/*.c")
-    add_files("prompt_builder/*.c")
-    add_files("conversation_loop/*.c")
-    add_files("context_compressor/*.c")
-    add_includedirs("include", {public = true})
-    add_includedirs("message_sanitization/include", {public = true})
-    add_includedirs("prompt_builder/include", {public = true})
-    add_includedirs("conversation_loop/include", {public = true})
-    add_includedirs("context_compressor/include", {public = true})
-    add_defines("AGENT_MESSAGE_SANITIZATION_EXPORT_DLL")
-    add_defines("AGENT_PROMPT_BUILDER_EXPORT_DLL")
-    add_defines("AGENT_CONVERSATION_LOOP_EXPORT_DLL")
-    add_defines("AGENT_CONTEXT_COMPRESSOR_EXPORT_DLL")
+    add_files("agent_core/agent_core.c",
+              "message_sanitization/*.c",
+              "prompt_builder/*.c",
+              "conversation_loop/*.c",
+              "context_compressor/*.c")
+    add_includedirs("include",
+                    "message_sanitization/include",
+                    "prompt_builder/include",
+                    "conversation_loop/include",
+                    "context_compressor/include",
+                    {public = true})
+    add_defines("AGENT_CORE_EXPORT_DLL")
     add_deps("yyjson", "xxhash")
     set_languages("c11")
     set_warnings("all", "error")
@@ -95,18 +31,7 @@ target("agent_core")
         enable_msvc_compat(target)
         target:add("cxflags", "/utf-8", {tools = "cl"})
     end)
-
--- Existing binary
-target("hello-c23")
-    set_kind("binary")
-    add_files("main.c")
-    add_deps("yyjson", "xxhash", "mimalloc", "glib")
-    set_languages("c11")
-    set_warnings("all", "error")
-    on_load(function(target)
-        enable_msvc_compat(target)
-        target:add("cxflags", "/utf-8", {tools = "cl"})
-    end)
+target_end()
 
 -- Tests
 includes("tests/xmake.lua")
