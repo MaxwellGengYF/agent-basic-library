@@ -6,7 +6,7 @@ target("yyjson")
     add_files("yyjson/src/yyjson.c")
     add_includedirs("yyjson/src", {public = true})
     set_languages("c11")
-    set_warnings("all", "error")
+    set_warnings("all")
     on_load(function(target)
         target:add("cxflags", "/utf-8", {tools = "cl"})
     end)
@@ -39,7 +39,7 @@ target("mimalloc")
             target:add("syslinks", "advapi32", "bcrypt", {public = true})
         end
     end)
-    set_warnings("all", "error")
+    set_warnings("all")
 
 -- glib: built from the meson-based submodule
 target("glib")

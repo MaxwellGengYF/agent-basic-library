@@ -50,24 +50,6 @@ static void free_tool_calls(ToolCallInfo* calls, size_t count) {
     free(calls);
 }
 
-static int is_known_id(const char* id, ToolCallInfo* calls, size_t count) {
-    if (!id || !calls) return 0;
-    for (size_t i = 0; i < count; i++) {
-        if (calls[i].id && strcmp(calls[i].id, id) == 0) return 1;
-    }
-    return 0;
-}
-
-static const char* get_call_name(const char* id, ToolCallInfo* calls, size_t count) {
-    if (!id || !calls) return "invalid_tool_call";
-    for (size_t i = 0; i < count; i++) {
-        if (calls[i].id && strcmp(calls[i].id, id) == 0) {
-            return calls[i].name ? calls[i].name : "invalid_tool_call";
-        }
-    }
-    return "invalid_tool_call";
-}
-
 /* ------------------------------------------------------------------ */
 /* sanitize_api_messages                                               */
 /* ------------------------------------------------------------------ */
