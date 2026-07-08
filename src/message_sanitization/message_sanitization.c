@@ -4,6 +4,7 @@
  * Handles surrogate repair, JSON repair, non-ASCII stripping, image stripping.
  */
 #include "message_sanitization.h"
+#include "agent_compat.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -140,14 +141,14 @@ char* sanitize_messages_surrogates(const char* messages_json) {
 
 char* repair_tool_call_arguments(const char* raw_args, const char* tool_name) {
     (void)tool_name;
-    if (!raw_args) return strdup("{}");
+    if (!raw_args) return agent_strdup("{}");
 
     const char* s = raw_args;
     while (*s && (unsigned char)*s <= ' ') s++;
     size_t len = strlen(s);
 
-    if (len == 0) return strdup("{}");
-    if (strcmp(s, "None") == 0) return strdup("{}");
+    if (len == 0) return agent_strdup("{}");
+    if (strcmp(s, "None") == 0) return agent_strdup("{}");
 
     /* Try parsing with yyjson (lenient by default) */
     yyjson_doc* doc = yyjson_read(s, len, YYJSON_READ_ALLOW_TRAILING_COMMAS |
@@ -159,14 +160,14 @@ char* repair_tool_call_arguments(const char* raw_args, const char* tool_name) {
         if (mdoc) {
             char* json = yyjson_mut_write(mdoc, 0, NULL);
             yyjson_mut_doc_free(mdoc);
-            return json ? json : strdup("{}");
+            return json ? json : agent_strdup("{}");
         }
-        return strdup("{}");
+        return agent_strdup("{}");
     }
 
     /* Repair trailing commas */
-    char* fixed = strdup(s);
-    if (!fixed) return strdup("{}");
+    char* fixed = agent_strdup(s);
+    if (!fixed) return agent_strdup("{}");
 
     int changed;
     do {
@@ -197,7 +198,7 @@ char* repair_tool_call_arguments(const char* raw_args, const char* tool_name) {
     if (open_curly > 0) {
         size_t old_len = strlen(fixed);
         char* tmp = (char*)realloc(fixed, old_len + open_curly + 1);
-        if (!tmp) { free(fixed); return strdup("{}"); }
+        if (!tmp) { free(fixed); return agent_strdup("{}"); }
         fixed = tmp;
         for (int i = 0; i < open_curly; i++) fixed[old_len + i] = '}';
         fixed[old_len + open_curly] = '\0';
@@ -205,7 +206,7 @@ char* repair_tool_call_arguments(const char* raw_args, const char* tool_name) {
     if (open_bracket > 0) {
         size_t old_len = strlen(fixed);
         char* tmp = (char*)realloc(fixed, old_len + open_bracket + 1);
-        if (!tmp) { free(fixed); return strdup("{}"); }
+        if (!tmp) { free(fixed); return agent_strdup("{}"); }
         fixed = tmp;
         for (int i = 0; i < open_bracket; i++) fixed[old_len + i] = ']';
         fixed[old_len + open_bracket] = '\0';
@@ -248,14 +249,14 @@ char* repair_tool_call_arguments(const char* raw_args, const char* tool_name) {
             char* json = yyjson_mut_write(mdoc, 0, NULL);
             yyjson_mut_doc_free(mdoc);
             free(fixed);
-            return json ? json : strdup("{}");
+            return json ? json : agent_strdup("{}");
         }
         free(fixed);
-        return strdup("{}");
+        return agent_strdup("{}");
     }
 
     free(fixed);
-    return strdup("{}");
+    return agent_strdup("{}");
 }
 
 char* escape_invalid_chars_in_json_strings(const char* raw) {
@@ -420,16 +421,19 @@ char* strip_images_from_messages(const char* messages_json) {
 
     /* First pass: find indices to delete (non-tool messages with empty content after strip) */
     size_t total = yyjson_mut_arr_size(root);
-    int* to_delete = (int*)calloc(total, sizeof(int));
-    int del_count = 0;
+    size_t* to_delete = (size_t*)calloc(total, sizeof(size_t));
+    if (!to_delete) {
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
+    size_t del_count = 0;
 
     size_t idx, max;
     yyjson_mut_val* msg;
-    int msg_idx = 0;
     yyjson_mut_arr_foreach(root, idx, max, msg) {
-        if (!yyjson_mut_is_obj(msg)) { msg_idx++; continue; }
+        if (!yyjson_mut_is_obj(msg)) continue;
         yyjson_mut_val* content = yyjson_mut_obj_get(msg, "content");
-        if (!content || !yyjson_mut_is_arr(content)) { msg_idx++; continue; }
+        if (!content || !yyjson_mut_is_arr(content)) continue;
 
         /* Build a new filtered parts array */
         int found_image = 0;
@@ -474,16 +478,15 @@ char* strip_images_from_messages(const char* messages_json) {
                         yyjson_mut_strcpy(doc, "[image content removed  --  server does not support images]"));
                 } else {
                     /* Non-tool message - mark for deletion */
-                    to_delete[del_count++] = msg_idx;
+                    to_delete[del_count++] = idx;
                 }
             }
         }
-        msg_idx++;
     }
 
     /* Delete marked messages in reverse order */
-    for (int i = del_count - 1; i >= 0; i--) {
-        yyjson_mut_arr_remove(root, to_delete[i]);
+    for (size_t i = del_count; i > 0; i--) {
+        yyjson_mut_arr_remove(root, to_delete[i - 1]);
     }
     free(to_delete);
 

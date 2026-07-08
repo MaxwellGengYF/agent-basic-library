@@ -7,6 +7,7 @@
  *   - _prune_old_tool_results
  */
 #include "context_compressor.h"
+#include "agent_compat.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -80,6 +81,12 @@ static int id_in_set(const char* id, char** ids, size_t count) {
     return 0;
 }
 
+static void free_id_set(char** ids, size_t count) {
+    if (!ids) return;
+    for (size_t i = 0; i < count; i++) free(ids[i]);
+    free(ids);
+}
+
 /* ------------------------------------------------------------------ */
 /* sanitize_tool_pairs                                                 */
 /* ------------------------------------------------------------------ */
@@ -103,6 +110,10 @@ char* sanitize_tool_pairs(const char* messages_json) {
     /* Collect all tool_call_ids from assistant messages */
     size_t max_ids = 256;
     char** call_ids = (char**)calloc(max_ids, sizeof(char*));
+    if (!call_ids) {
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
     size_t id_count = 0;
 
     size_t idx, max;
@@ -123,18 +134,35 @@ char* sanitize_tool_pairs(const char* messages_json) {
             yyjson_mut_val* id_val = yyjson_mut_obj_get(tc, "id");
             if (id_val && yyjson_mut_is_str(id_val)) {
                 if (id_count >= max_ids) {
-                    max_ids *= 2;
-                    call_ids = (char**)realloc(call_ids, max_ids * sizeof(char*));
+                    size_t new_max = max_ids * 2;
+                    char** tmp = (char**)realloc(call_ids, new_max * sizeof(char*));
+                    if (!tmp) {
+                        free_id_set(call_ids, id_count);
+                        yyjson_mut_doc_free(doc);
+                        return NULL;
+                    }
+                    call_ids = tmp;
+                    max_ids = new_max;
                 }
-                call_ids[id_count++] = strdup(yyjson_mut_get_str(id_val));
+                call_ids[id_count++] = agent_strdup(yyjson_mut_get_str(id_val));
+                if (!call_ids[id_count - 1]) {
+                    free_id_set(call_ids, id_count - 1);
+                    yyjson_mut_doc_free(doc);
+                    return NULL;
+                }
             }
         }
     }
 
     /* Remove orphan tool messages (in reverse order so indices stay valid) */
     size_t total = yyjson_mut_arr_size(root);
-    int* to_drop = (int*)calloc(total, sizeof(int));
-    int drop_count = 0;
+    size_t* to_drop = (size_t*)calloc(total, sizeof(size_t));
+    if (!to_drop) {
+        free_id_set(call_ids, id_count);
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
+    size_t drop_count = 0;
 
     for (size_t i = 0; i < total; i++) {
         yyjson_mut_val* m = yyjson_mut_arr_get(root, i);
@@ -145,13 +173,13 @@ char* sanitize_tool_pairs(const char* messages_json) {
             yyjson_mut_val* tcid = yyjson_mut_obj_get(m, "tool_call_id");
             const char* tcs = tcid ? yyjson_mut_get_str(tcid) : "";
             if (!id_in_set(tcs, call_ids, id_count)) {
-                to_drop[drop_count++] = (int)i;
+                to_drop[drop_count++] = i;
             }
         }
     }
 
-    for (int d = drop_count - 1; d >= 0; d--) {
-        yyjson_mut_arr_remove(root, to_drop[d]);
+    for (size_t d = drop_count; d > 0; d--) {
+        yyjson_mut_arr_remove(root, to_drop[d - 1]);
     }
     free(to_drop);
 
@@ -184,8 +212,7 @@ char* sanitize_tool_pairs(const char* messages_json) {
     char* result = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);
 
-    for (size_t i = 0; i < id_count; i++) free(call_ids[i]);
-    free(call_ids);
+    free_id_set(call_ids, id_count);
     return result;
 }
 
@@ -266,7 +293,7 @@ char* build_static_fallback_summary(const char* messages_json,
     size_t total = yyjson_mut_arr_size(root);
     if (tail_start >= total) {
         yyjson_mut_doc_free(doc);
-        return strdup("[No messages were pruned. -- REFERENCE ONLY] Respond only to the latest user message below.");
+        return agent_strdup("[No messages were pruned. -- REFERENCE ONLY] Respond only to the latest user message below.");
     }
 
     int user_count = 0, assistant_count = 0, tool_count = 0, system_count = 0;
@@ -286,23 +313,49 @@ char* build_static_fallback_summary(const char* messages_json,
         else if (strcmp(role_str, "tool") == 0) tool_count++;
     }
 
-    char buf[1024];
-    int pos = snprintf(buf, sizeof(buf),
+    /* Compute required size first, then allocate exactly once. */
+    int prefix_len = snprintf(NULL, 0,
+        "[CONTEXT COMPACTION  --  REFERENCE ONLY] %d messages pruned:",
+        (int)tail_start);
+    int suffix_len = snprintf(NULL, 0,
+        ". Respond only to the latest user message below.");
+    int user_len = (user_count > 0) ? snprintf(NULL, 0, " %d user", user_count) : 0;
+    int assistant_len = (assistant_count > 0) ? snprintf(NULL, 0, " %d assistant", assistant_count) : 0;
+    int tool_len = (tool_count > 0) ? snprintf(NULL, 0, " %d tool calls", tool_count) : 0;
+    int system_len = (system_count > 0) ? snprintf(NULL, 0, " %d system", system_count) : 0;
+
+    if (prefix_len < 0 || suffix_len < 0 || user_len < 0 || assistant_len < 0 ||
+        tool_len < 0 || system_len < 0) {
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
+
+    size_t buf_size = (size_t)prefix_len + (size_t)suffix_len +
+                      (size_t)user_len + (size_t)assistant_len +
+                      (size_t)tool_len + (size_t)system_len + 1;
+    char* buf = (char*)malloc(buf_size);
+    if (!buf) {
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
+
+    size_t pos = 0;
+    pos += (size_t)snprintf(buf + pos, buf_size - pos,
         "[CONTEXT COMPACTION  --  REFERENCE ONLY] %d messages pruned:",
         (int)tail_start);
     if (user_count > 0)
-        pos += snprintf(buf + pos, sizeof(buf) - pos, " %d user", user_count);
+        pos += (size_t)snprintf(buf + pos, buf_size - pos, " %d user", user_count);
     if (assistant_count > 0)
-        pos += snprintf(buf + pos, sizeof(buf) - pos, " %d assistant", assistant_count);
+        pos += (size_t)snprintf(buf + pos, buf_size - pos, " %d assistant", assistant_count);
     if (tool_count > 0)
-        pos += snprintf(buf + pos, sizeof(buf) - pos, " %d tool calls", tool_count);
+        pos += (size_t)snprintf(buf + pos, buf_size - pos, " %d tool calls", tool_count);
     if (system_count > 0)
-        pos += snprintf(buf + pos, sizeof(buf) - pos, " %d system", system_count);
-    snprintf(buf + pos, sizeof(buf) - pos,
+        pos += (size_t)snprintf(buf + pos, buf_size - pos, " %d system", system_count);
+    snprintf(buf + pos, buf_size - pos,
         ". Respond only to the latest user message below.");
 
     yyjson_mut_doc_free(doc);
-    return strdup(buf);
+    return buf;
 }
 
 /* ------------------------------------------------------------------ */
@@ -328,6 +381,10 @@ char* prune_old_tool_results(const char* messages_json) {
     /* Collect tool_call_ids from assistant messages */
     size_t max_ids = 256;
     char** active_ids = (char**)calloc(max_ids, sizeof(char*));
+    if (!active_ids) {
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
     size_t id_count = 0;
 
     size_t idx, max;
@@ -348,18 +405,35 @@ char* prune_old_tool_results(const char* messages_json) {
             yyjson_mut_val* idv = yyjson_mut_obj_get(tc, "id");
             if (idv && yyjson_mut_is_str(idv)) {
                 if (id_count >= max_ids) {
-                    max_ids *= 2;
-                    active_ids = (char**)realloc(active_ids, max_ids * sizeof(char*));
+                    size_t new_max = max_ids * 2;
+                    char** tmp = (char**)realloc(active_ids, new_max * sizeof(char*));
+                    if (!tmp) {
+                        free_id_set(active_ids, id_count);
+                        yyjson_mut_doc_free(doc);
+                        return NULL;
+                    }
+                    active_ids = tmp;
+                    max_ids = new_max;
                 }
-                active_ids[id_count++] = strdup(yyjson_mut_get_str(idv));
+                active_ids[id_count++] = agent_strdup(yyjson_mut_get_str(idv));
+                if (!active_ids[id_count - 1]) {
+                    free_id_set(active_ids, id_count - 1);
+                    yyjson_mut_doc_free(doc);
+                    return NULL;
+                }
             }
         }
     }
 
     /* Remove orphan tool results (reverse order) */
     size_t total = yyjson_mut_arr_size(root);
-    int* to_drop = (int*)calloc(total, sizeof(int));
-    int drop_count = 0;
+    size_t* to_drop = (size_t*)calloc(total, sizeof(size_t));
+    if (!to_drop) {
+        free_id_set(active_ids, id_count);
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
+    size_t drop_count = 0;
 
     for (size_t i = 0; i < total; i++) {
         yyjson_mut_val* m = yyjson_mut_arr_get(root, i);
@@ -370,12 +444,12 @@ char* prune_old_tool_results(const char* messages_json) {
         yyjson_mut_val* tcid = yyjson_mut_obj_get(m, "tool_call_id");
         const char* tcs = tcid ? yyjson_mut_get_str(tcid) : "";
         if (!id_in_set(tcs, active_ids, id_count)) {
-            to_drop[drop_count++] = (int)i;
+            to_drop[drop_count++] = i;
         }
     }
 
-    for (int d = drop_count - 1; d >= 0; d--) {
-        yyjson_mut_arr_remove(root, to_drop[d]);
+    for (size_t d = drop_count; d > 0; d--) {
+        yyjson_mut_arr_remove(root, to_drop[d - 1]);
     }
     free(to_drop);
 
@@ -397,7 +471,6 @@ char* prune_old_tool_results(const char* messages_json) {
     char* result = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);
 
-    for (size_t i = 0; i < id_count; i++) free(active_ids[i]);
-    free(active_ids);
+    free_id_set(active_ids, id_count);
     return result;
 }

@@ -5,6 +5,7 @@
  *   - _repair_message_sequence
  */
 #include "conversation_loop.h"
+#include "agent_compat.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,6 +31,12 @@ static int is_known_id(const char* id, char** ids, size_t count) {
         if (ids[i] && strcmp(ids[i], id) == 0) return 1;
     }
     return 0;
+}
+
+static void free_id_set(char** ids, size_t count) {
+    if (!ids) return;
+    for (size_t i = 0; i < count; i++) free(ids[i]);
+    free(ids);
 }
 
 /* ------------------------------------------------------------------ */
@@ -61,6 +68,10 @@ char* sanitize_api_messages(const char* messages_json) {
     /* Pass 1: collect all tool_call_ids from assistant messages */
     size_t max_ids = 256;
     char** tool_call_ids = (char**)calloc(max_ids, sizeof(char*));
+    if (!tool_call_ids) {
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
     size_t id_count = 0;
 
     size_t idx, max;
@@ -82,18 +93,35 @@ char* sanitize_api_messages(const char* messages_json) {
             yyjson_mut_val* id_val = yyjson_mut_obj_get(tc, "id");
             if (id_val && yyjson_mut_is_str(id_val)) {
                 if (id_count >= max_ids) {
-                    max_ids *= 2;
-                    tool_call_ids = (char**)realloc(tool_call_ids, max_ids * sizeof(char*));
+                    size_t new_max = max_ids * 2;
+                    char** tmp = (char**)realloc(tool_call_ids, new_max * sizeof(char*));
+                    if (!tmp) {
+                        free_id_set(tool_call_ids, id_count);
+                        yyjson_mut_doc_free(doc);
+                        return NULL;
+                    }
+                    tool_call_ids = tmp;
+                    max_ids = new_max;
                 }
                 /* Store a copy; will be freed after write */
-                tool_call_ids[id_count++] = strdup(yyjson_mut_get_str(id_val));
+                tool_call_ids[id_count++] = agent_strdup(yyjson_mut_get_str(id_val));
+                if (!tool_call_ids[id_count - 1]) {
+                    free_id_set(tool_call_ids, id_count - 1);
+                    yyjson_mut_doc_free(doc);
+                    return NULL;
+                }
             }
         }
     }
 
     /* Pass 2: filter in reverse order - remove invalid messages */
     size_t total = yyjson_mut_arr_size(root);
-    int* to_keep = (int*)calloc(total, sizeof(int));
+    size_t* to_keep = (size_t*)calloc(total, sizeof(size_t));
+    if (!to_keep) {
+        free_id_set(tool_call_ids, id_count);
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
     size_t keep_count = 0;
 
     for (size_t i = 0; i < total; i++) {
@@ -159,23 +187,29 @@ char* sanitize_api_messages(const char* messages_json) {
             }
         }
 
-        to_keep[keep_count++] = (int)i;
+        to_keep[keep_count++] = i;
     }
 
     /* Remove messages we don't want (in reverse order) */
-    int* to_drop = (int*)calloc(total, sizeof(int));
-    int drop_count = 0;
+    size_t* to_drop = (size_t*)calloc(total, sizeof(size_t));
+    if (!to_drop) {
+        free(to_keep);
+        free_id_set(tool_call_ids, id_count);
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
+    size_t drop_count = 0;
     for (size_t i = 0; i < total; i++) {
         int found = 0;
         for (size_t k = 0; k < keep_count; k++) {
-            if (to_keep[k] == (int)i) { found = 1; break; }
+            if (to_keep[k] == i) { found = 1; break; }
         }
-        if (!found) to_drop[drop_count++] = (int)i;
+        if (!found) to_drop[drop_count++] = i;
     }
 
     /* Remove in reverse order so indices stay valid */
-    for (int d = drop_count - 1; d >= 0; d--) {
-        yyjson_mut_arr_remove(root, to_drop[d]);
+    for (size_t d = drop_count; d > 0; d--) {
+        yyjson_mut_arr_remove(root, to_drop[d - 1]);
     }
     free(to_drop);
     free(to_keep);
@@ -212,8 +246,7 @@ char* sanitize_api_messages(const char* messages_json) {
     yyjson_mut_doc_free(doc);
 
     /* Now free the collected IDs */
-    for (size_t i = 0; i < id_count; i++) free(tool_call_ids[i]);
-    free(tool_call_ids);
+    free_id_set(tool_call_ids, id_count);
 
     return result;
 }

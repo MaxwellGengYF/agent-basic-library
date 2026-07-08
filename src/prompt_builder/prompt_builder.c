@@ -4,6 +4,7 @@
  * Content truncation, YAML frontmatter stripping, context assembly.
  */
 #include "prompt_builder.h"
+#include "agent_compat.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,11 +20,11 @@ char* truncate_content(const char* content, const char* filename,
     (void)read_path;
 
     if (!content) return NULL;
-    if (max_chars == 0) return strdup("");
+    if (max_chars == 0) return agent_strdup("");
 
     size_t len = strlen(content);
     if (len <= max_chars) {
-        return strdup(content);
+        return agent_strdup(content);
     }
 
     /* head = 70%, tail = 20% */
@@ -66,7 +67,7 @@ char* strip_yaml_frontmatter(const char* content) {
 
     /* Check if starts with "---" */
     if (len < 3 || content[0] != '-' || content[1] != '-' || content[2] != '-') {
-        return strdup(content);
+        return agent_strdup(content);
     }
 
     /* Find closing "\n---" after position 3 */
@@ -81,7 +82,7 @@ char* strip_yaml_frontmatter(const char* content) {
 
     if (!end_pos) {
         /* No closing --- found, return original */
-        return strdup(content);
+        return agent_strdup(content);
     }
 
     /* Skip past closing --- and any trailing newlines */
@@ -90,10 +91,10 @@ char* strip_yaml_frontmatter(const char* content) {
 
     if (*body == '\0') {
         /* Body is empty after stripping, return original */
-        return strdup(content);
+        return agent_strdup(content);
     }
 
-    return strdup(body);
+    return agent_strdup(body);
 }
 
 /* ------------------------------------------------------------------ */

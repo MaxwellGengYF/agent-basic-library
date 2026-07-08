@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdbool.h>
+#include <inttypes.h>
 
 // yyjson
 #include <yyjson.h>
@@ -15,7 +17,7 @@
 // glib
 #include <glib.h>
 
-// C23: true/false are now keywords, bool is a built-in type
+// C11/C23: bool/true/false via <stdbool.h> for cross-platform compatibility
 // C23: constexpr for compile-time constants
 enum { MAX_ITEMS = 10 };
 
@@ -45,9 +47,9 @@ void test_yyjson(void) {
     yyjson_val* act  = yyjson_obj_get(root, "active");
     
     if (name && ver && act) {
-        printf("yyjson: parsed OK - name=%s, version=%lld, active=%s\n",
+        printf("yyjson: parsed OK - name=%s, version=%" PRId64 ", active=%s\n",
                yyjson_get_str(name),
-               (long long)yyjson_get_int(ver),
+               (int64_t)yyjson_get_int(ver),
                yyjson_get_bool(act) ? "true" : "false");
     }
     
@@ -58,7 +60,7 @@ void test_yyjson(void) {
 void test_xxhash(void) {
     const char* data = "Hello, C23 with xxhash!";
     XXH64_hash_t hash = XXH64(data, strlen(data), 0);
-    printf("xxhash: XXH64 of \"%s\" = 0x%016llX\n", data, (unsigned long long)hash);
+    printf("xxhash: XXH64 of \"%s\" = 0x%016" PRIx64 "\n", data, (uint64_t)hash);
 }
 
 // Test mimalloc library
