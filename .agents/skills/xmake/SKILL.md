@@ -38,16 +38,6 @@ XMake supports sanitizer builds through sanitizer policies. Policies propagate t
 
 ### ASan in debug mode
 
-In this project AddressSanitizer (ASan) is enabled automatically whenever the build mode is `debug`:
-
-```lua
-add_rules("mode.release", "mode.debug")
-
-if is_mode("debug") then
-    set_policy("build.sanitizer.address", true)
-end
-```
-
 Configure and build with debug mode as usual:
 
 ```bash

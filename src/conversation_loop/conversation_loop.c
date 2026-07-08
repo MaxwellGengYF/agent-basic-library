@@ -13,7 +13,7 @@
 
 /* Valid API roles */
 static const char* VALID_ROLES[] = {
-    "system", "user", "assistant", "tool", "function", NULL
+    "system", "user", "assistant", "tool", "function", "developer", NULL
 };
 
 static int is_valid_role(const char* role) {
@@ -24,19 +24,48 @@ static int is_valid_role(const char* role) {
     return 0;
 }
 
-/* Check if a tool_call_id exists in a set of IDs */
-static int is_known_id(const char* id, char** ids, size_t count) {
-    if (!id || !ids) return 0;
+/* Trim leading and trailing whitespace in-place. Returns the trimmed start. */
+static char* trim_ws(char* s) {
+    if (!s) return NULL;
+    char* start = s;
+    while (*start && (unsigned char)*start <= ' ') start++;
+    char* end = start + strlen(start);
+    while (end > start && (unsigned char)*(end - 1) <= ' ') end--;
+    *end = '\0';
+    return start;
+}
+
+/* Tool call info: id + function name */
+typedef struct {
+    char* id;
+    char* name;
+} ToolCallInfo;
+
+static void free_tool_calls(ToolCallInfo* calls, size_t count) {
+    if (!calls) return;
     for (size_t i = 0; i < count; i++) {
-        if (ids[i] && strcmp(ids[i], id) == 0) return 1;
+        free(calls[i].id);
+        free(calls[i].name);
+    }
+    free(calls);
+}
+
+static int is_known_id(const char* id, ToolCallInfo* calls, size_t count) {
+    if (!id || !calls) return 0;
+    for (size_t i = 0; i < count; i++) {
+        if (calls[i].id && strcmp(calls[i].id, id) == 0) return 1;
     }
     return 0;
 }
 
-static void free_id_set(char** ids, size_t count) {
-    if (!ids) return;
-    for (size_t i = 0; i < count; i++) free(ids[i]);
-    free(ids);
+static const char* get_call_name(const char* id, ToolCallInfo* calls, size_t count) {
+    if (!id || !calls) return "invalid_tool_call";
+    for (size_t i = 0; i < count; i++) {
+        if (calls[i].id && strcmp(calls[i].id, id) == 0) {
+            return calls[i].name ? calls[i].name : "invalid_tool_call";
+        }
+    }
+    return "invalid_tool_call";
 }
 
 /* ------------------------------------------------------------------ */
@@ -49,12 +78,6 @@ char* sanitize_api_messages(const char* messages_json) {
     yyjson_doc* idoc = yyjson_read(messages_json, strlen(messages_json), 0);
     if (!idoc) return NULL;
 
-    /*
-     * Work directly on the mutable document. We modify the root array in
-     * reverse order so indices stay valid during removal. The tool_call_ids
-     * array is freed AFTER the write because yyjson references the strings
-     * (yyjson_mut_str, not yyjson_mut_strcpy).
-     */
     yyjson_mut_doc* doc = yyjson_doc_mut_copy(idoc, NULL);
     yyjson_doc_free(idoc);
     if (!doc) return NULL;
@@ -65,14 +88,14 @@ char* sanitize_api_messages(const char* messages_json) {
         return NULL;
     }
 
-    /* Pass 1: collect all tool_call_ids from assistant messages */
-    size_t max_ids = 256;
-    char** tool_call_ids = (char**)calloc(max_ids, sizeof(char*));
-    if (!tool_call_ids) {
+    /* Pass 1: collect all tool_call ids and names from assistant messages */
+    size_t max_calls = 256;
+    ToolCallInfo* tool_calls = (ToolCallInfo*)calloc(max_calls, sizeof(ToolCallInfo));
+    if (!tool_calls) {
         yyjson_mut_doc_free(doc);
         return NULL;
     }
-    size_t id_count = 0;
+    size_t call_count = 0;
 
     size_t idx, max;
     yyjson_mut_val* msg;
@@ -92,24 +115,54 @@ char* sanitize_api_messages(const char* messages_json) {
             if (!yyjson_mut_is_obj(tc)) continue;
             yyjson_mut_val* id_val = yyjson_mut_obj_get(tc, "id");
             if (id_val && yyjson_mut_is_str(id_val)) {
-                if (id_count >= max_ids) {
-                    size_t new_max = max_ids * 2;
-                    char** tmp = (char**)realloc(tool_call_ids, new_max * sizeof(char*));
+                if (call_count >= max_calls) {
+                    size_t new_max = max_calls * 2;
+                    ToolCallInfo* tmp = (ToolCallInfo*)realloc(tool_calls, new_max * sizeof(ToolCallInfo));
                     if (!tmp) {
-                        free_id_set(tool_call_ids, id_count);
+                        free_tool_calls(tool_calls, call_count);
                         yyjson_mut_doc_free(doc);
                         return NULL;
                     }
-                    tool_call_ids = tmp;
-                    max_ids = new_max;
+                    tool_calls = tmp;
+                    max_calls = new_max;
                 }
-                /* Store a copy; will be freed after write */
-                tool_call_ids[id_count++] = agent_strdup(yyjson_mut_get_str(id_val));
-                if (!tool_call_ids[id_count - 1]) {
-                    free_id_set(tool_call_ids, id_count - 1);
+                /* Store with whitespace stripped (matching Python get_tool_call_id) */
+                char* raw_id = agent_strdup(yyjson_mut_get_str(id_val));
+                if (!raw_id) {
+                    free_tool_calls(tool_calls, call_count);
                     yyjson_mut_doc_free(doc);
                     return NULL;
                 }
+                tool_calls[call_count].id = agent_strdup(trim_ws(raw_id));
+                free(raw_id);
+                /* Also extract function name */
+                tool_calls[call_count].name = NULL;
+                yyjson_mut_val* fn = yyjson_mut_obj_get(tc, "function");
+                if (fn && yyjson_mut_is_obj(fn)) {
+                    yyjson_mut_val* fn_name = yyjson_mut_obj_get(fn, "name");
+                    if (fn_name && yyjson_mut_is_str(fn_name)) {
+                        const char* nstr = yyjson_mut_get_str(fn_name);
+                        /* Check if name is effectively empty (empty or whitespace-only) */
+                        int eff_empty = 1;
+                        for (const char* p = nstr; *p; p++) {
+                            if ((unsigned char)*p > ' ') {
+                                eff_empty = 0;
+                                break;
+                            }
+                        }
+                        tool_calls[call_count].name = agent_strdup(eff_empty ? "invalid_tool_call" : nstr);
+                    } else {
+                        tool_calls[call_count].name = agent_strdup("invalid_tool_call");
+                    }
+                } else {
+                    tool_calls[call_count].name = agent_strdup("invalid_tool_call");
+                }
+                if (!tool_calls[call_count].id) {
+                    free_tool_calls(tool_calls, call_count);
+                    yyjson_mut_doc_free(doc);
+                    return NULL;
+                }
+                call_count++;
             }
         }
     }
@@ -118,7 +171,7 @@ char* sanitize_api_messages(const char* messages_json) {
     size_t total = yyjson_mut_arr_size(root);
     size_t* to_keep = (size_t*)calloc(total, sizeof(size_t));
     if (!to_keep) {
-        free_id_set(tool_call_ids, id_count);
+        free_tool_calls(tool_calls, call_count);
         yyjson_mut_doc_free(doc);
         return NULL;
     }
@@ -139,8 +192,25 @@ char* sanitize_api_messages(const char* messages_json) {
         /* For tool messages: check if tool_call_id is known */
         if (strcmp(role_str, "tool") == 0) {
             yyjson_mut_val* tcid = yyjson_mut_obj_get(m, "tool_call_id");
-            const char* tcid_str = tcid ? yyjson_mut_get_str(tcid) : "";
-            if (!is_known_id(tcid_str, tool_call_ids, id_count)) {
+            const char* raw_tcid = tcid ? yyjson_mut_get_str(tcid) : "";
+            if (!raw_tcid || !*raw_tcid) continue;
+            /* Check against known IDs with whitespace stripped (matching Python get_tool_call_id) */
+            int known = 0;
+            for (size_t ci = 0; ci < call_count; ci++) {
+                if (!tool_calls[ci].id) continue;
+                /* Strip leading whitespace from raw_tcid for comparison */
+                const char* p = raw_tcid;
+                while (*p && (unsigned char)*p <= ' ') p++;
+                /* Get strlen of trimmed version */
+                size_t rlen = strlen(p);
+                while (rlen > 0 && (unsigned char)p[rlen - 1] <= ' ') rlen--;
+                if (strlen(tool_calls[ci].id) == rlen &&
+                    strncmp(tool_calls[ci].id, p, rlen) == 0) {
+                    known = 1;
+                    break;
+                }
+            }
+            if (!known) {
                 continue; /* Drop orphan tool results */
             }
         }
@@ -156,33 +226,55 @@ char* sanitize_api_messages(const char* messages_json) {
                     yyjson_mut_val* fn = yyjson_mut_obj_get(tc, "function");
                     if (fn && yyjson_mut_is_obj(fn)) {
                         yyjson_mut_val* fn_name = yyjson_mut_obj_get(fn, "name");
-                        if (!fn_name || !yyjson_mut_is_str(fn_name) ||
-                            strlen(yyjson_mut_get_str(fn_name)) == 0) {
+                        int name_empty = 0;
+                        if (!fn_name || !yyjson_mut_is_str(fn_name)) {
+                            name_empty = 1;
+                        } else {
+                            const char* nstr = yyjson_mut_get_str(fn_name);
+                            name_empty = 1;
+                            for (const char* p = nstr; *p; p++) {
+                                if ((unsigned char)*p > ' ') {
+                                    name_empty = 0;
+                                    break;
+                                }
+                            }
+                        }
+                        if (name_empty) {
                             yyjson_mut_obj_put(fn,
                                 yyjson_mut_strcpy(doc, "name"),
-                                yyjson_mut_strcpy(doc, "unknown_tool"));
+                                yyjson_mut_strcpy(doc, "invalid_tool_call"));
                         }
                     }
                 }
             }
 
-            /* Check for empty content without tool_calls payload */
+            /* Check for empty content without payload (tool_calls, reasoning_content, codex items) */
+            /* Python: drop if content == "" AND no payload. content=None is NOT dropped. */
             yyjson_mut_val* content = yyjson_mut_obj_get(m, "content");
-            int has_content = content && yyjson_mut_is_str(content) &&
-                               strlen(yyjson_mut_get_str(content)) > 0;
+            int is_empty_content = content && yyjson_mut_is_str(content) &&
+                                   strlen(yyjson_mut_get_str(content)) == 0;
             int has_tc = tcs && yyjson_mut_is_arr(tcs) &&
                           yyjson_mut_arr_size(tcs) > 0;
-            if (!has_content && !has_tc) {
+            yyjson_mut_val* rc = yyjson_mut_obj_get(m, "reasoning_content");
+            int has_reasoning = rc && yyjson_mut_is_str(rc) &&
+                                strlen(yyjson_mut_get_str(rc)) > 0;
+            yyjson_mut_val* cdri = yyjson_mut_obj_get(m, "codex_reasoning_items");
+            int has_codex_ri = cdri && yyjson_mut_is_arr(cdri) &&
+                               yyjson_mut_arr_size(cdri) > 0;
+            yyjson_mut_val* cdmi = yyjson_mut_obj_get(m, "codex_message_items");
+            int has_codex_mi = cdmi && yyjson_mut_is_arr(cdmi) &&
+                               yyjson_mut_arr_size(cdmi) > 0;
+            if (is_empty_content && !has_tc && !has_reasoning && !has_codex_ri && !has_codex_mi) {
                 continue; /* Drop empty assistant without payload */
             }
         }
 
-        /* For user/function messages: drop if empty content */
+        /* For user/function messages: drop if content is explicitly empty string "" */
         if (strcmp(role_str, "user") == 0 || strcmp(role_str, "function") == 0) {
             yyjson_mut_val* content = yyjson_mut_obj_get(m, "content");
-            int has_content = content && yyjson_mut_is_str(content) &&
-                               strlen(yyjson_mut_get_str(content)) > 0;
-            if (!has_content) {
+            int has_empty_content = content && yyjson_mut_is_str(content) &&
+                                   strlen(yyjson_mut_get_str(content)) == 0;
+            if (has_empty_content) {
                 continue; /* Drop empty user/function */
             }
         }
@@ -194,7 +286,7 @@ char* sanitize_api_messages(const char* messages_json) {
     size_t* to_drop = (size_t*)calloc(total, sizeof(size_t));
     if (!to_drop) {
         free(to_keep);
-        free_id_set(tool_call_ids, id_count);
+        free_tool_calls(tool_calls, call_count);
         yyjson_mut_doc_free(doc);
         return NULL;
     }
@@ -214,9 +306,9 @@ char* sanitize_api_messages(const char* messages_json) {
     free(to_drop);
     free(to_keep);
 
-    /* Pass 3: mark found tool_call_ids by checking which have matching tool messages */
+    /* Pass 3: inject stub results for missing tool calls (appended at end) */
     size_t new_total = yyjson_mut_arr_size(root);
-    for (size_t i = 0; i < id_count; i++) {
+    for (size_t i = 0; i < call_count; i++) {
         int found = 0;
         for (size_t j = 0; j < new_total; j++) {
             yyjson_mut_val* m = yyjson_mut_arr_get(root, j);
@@ -225,28 +317,36 @@ char* sanitize_api_messages(const char* messages_json) {
             const char* rs = rv ? yyjson_mut_get_str(rv) : "";
             if (strcmp(rs, "tool") != 0) continue;
             yyjson_mut_val* tcid = yyjson_mut_obj_get(m, "tool_call_id");
-            const char* tcs = tcid ? yyjson_mut_get_str(tcid) : "";
-            if (tool_call_ids[i] && strcmp(tool_call_ids[i], tcs) == 0) {
+            if (!tcid) continue;
+            const char* raw_tcs = yyjson_mut_get_str(tcid);
+            if (!raw_tcs || !*raw_tcs) continue;
+            /* Strip whitespace from tool result ID (matching Python) */
+            const char* p = raw_tcs;
+            while (*p && (unsigned char)*p <= ' ') p++;
+            size_t rlen = strlen(p);
+            while (rlen > 0 && (unsigned char)p[rlen - 1] <= ' ') rlen--;
+            if (tool_calls[i].id && strlen(tool_calls[i].id) == rlen &&
+                strncmp(tool_calls[i].id, p, rlen) == 0) {
                 found = 1;
                 break;
             }
         }
         /* Inject stub for missing results */
-        if (!found && tool_call_ids[i]) {
+        if (!found && tool_calls[i].id) {
             yyjson_mut_val* stub = yyjson_mut_obj(doc);
             yyjson_mut_obj_add_str(doc, stub, "role", "tool");
-            yyjson_mut_obj_add_str(doc, stub, "tool_call_id", tool_call_ids[i]);
-            yyjson_mut_obj_add_str(doc, stub, "content", "[tool output unavailable]");
+            yyjson_mut_obj_add_str(doc, stub, "tool_call_id", tool_calls[i].id);
+            const char* tname = tool_calls[i].name ? tool_calls[i].name : "invalid_tool_call";
+            yyjson_mut_obj_add_str(doc, stub, "name", tname);
+            yyjson_mut_obj_add_str(doc, stub, "content", "[Result unavailable \xe2\x80\x94 see context summary above]");
             yyjson_mut_arr_append(root, stub);
         }
     }
 
-    /* Write the doc while tool_call_ids strings are still alive */
+    /* Write the doc while tool_calls strings are still alive */
     char* result = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);
-
-    /* Now free the collected IDs */
-    free_id_set(tool_call_ids, id_count);
+    free_tool_calls(tool_calls, call_count);
 
     return result;
 }

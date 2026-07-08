@@ -29,7 +29,7 @@ TEST(test_sanitize_api_messages_empty_tool_name) {
     const char* input = "[{\"role\":\"assistant\",\"content\":\"Let me check\",\"tool_calls\":[{\"id\":\"call_1\",\"function\":{\"name\":\"\",\"arguments\":\"{}\"}}]}]";
     char* result = sanitize_api_messages(input);
     ASSERT_NOT_NULL(result);
-    ASSERT_STR_CONTAINS(result, "unknown_tool");
+    ASSERT_STR_CONTAINS(result, "invalid_tool_call");
     free(result);
     TEST_END();
 }
@@ -82,7 +82,7 @@ TEST(test_sanitize_and_repair_messages) {
     const char* input = "[{\"role\":\"user\",\"content\":\"Hi\"},{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"function\":{\"name\":\"\",\"arguments\":\"{}\"}}]}]";
     char* result = sanitize_and_repair_messages(input);
     ASSERT_NOT_NULL(result);
-    ASSERT_STR_CONTAINS(result, "unknown_tool");
+    ASSERT_STR_CONTAINS(result, "invalid_tool_call");
     free(result);
     TEST_END();
 }

@@ -204,7 +204,8 @@ char* sanitize_tool_pairs(const char* messages_json) {
             yyjson_mut_val* stub = yyjson_mut_obj(doc);
             yyjson_mut_obj_add_str(doc, stub, "role", "tool");
             yyjson_mut_obj_add_str(doc, stub, "tool_call_id", call_ids[i]);
-            yyjson_mut_obj_add_str(doc, stub, "content", "[tool output unavailable]");
+            yyjson_mut_obj_add_str(doc, stub, "name", "invalid_tool_call");
+            yyjson_mut_obj_add_str(doc, stub, "content", "[Result unavailable \xe2\x80\x94 see context summary above]");
             yyjson_mut_arr_append(root, stub);
         }
     }

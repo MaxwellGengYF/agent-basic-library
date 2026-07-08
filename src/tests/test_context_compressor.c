@@ -27,7 +27,7 @@ TEST(test_sanitize_tool_pairs_missing_stub) {
     const char* input = "[{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"function\":{\"name\":\"test\",\"arguments\":\"{}\"}}]}]";
     char* result = sanitize_tool_pairs(input);
     ASSERT_NOT_NULL(result);
-    ASSERT_STR_CONTAINS(result, "tool output unavailable");
+    ASSERT_STR_CONTAINS(result, "Result unavailable");
     free(result);
     TEST_END();
 }

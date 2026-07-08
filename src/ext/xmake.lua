@@ -15,9 +15,15 @@ target("yyjson")
 target("xxhash")
     set_kind("static")
     add_files("xxhash/xxhash.c")
-    add_files("xxhash/xxh_x86dispatch.c")
     add_includedirs("xxhash", {public = true})
     set_languages("c11")
+
+    -- xxh_x86dispatch.c implements runtime x86 SIMD dispatching and is only
+    -- valid on x86/x86_64 targets. Apple Silicon and other non-x86 builds must
+    -- not compile it.
+    if is_arch("x86", "x64", "x86_64", "i386", "i686") then
+        add_files("xxhash/xxh_x86dispatch.c")
+    end
 
 -- mimalloc: fast memory allocator (static)
 target("mimalloc")

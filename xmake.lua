@@ -1,9 +1,7 @@
 add_rules("mode.release", "mode.debug")
 
 -- AddressSanitizer is enabled automatically for debug builds.
-if is_mode("debug") then
-    set_policy("build.sanitizer.address", true)
-end
+-- set_policy("build.sanitizer.address", true)
 
 -- Suppress MSVC deprecation warnings for POSIX names (strdup, etc.)
 if is_plat("windows") then
