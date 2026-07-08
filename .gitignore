@@ -8,3 +8,25 @@ build/
 # Kimix cache
 .kimix_cache
 .xmake
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.tox/
+.nox/
+.coverage
+*.cover
+.hypothesis/
+env/
+venv/
+.venv/
+*.log
+

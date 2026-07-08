@@ -455,16 +455,23 @@ char* strip_images_from_messages(const char* messages_json) {
 
         if (found_image) {
             if (has_other) {
-                /* Build new parts list without images */
+                /* Build new parts list without images.
+                 * Clone each retained part into the new array so that the
+                 * original content array can be safely replaced without
+                 * creating shared-value aliasing that yyjson release builds
+                 * can serialize incorrectly. */
                 yyjson_mut_val* new_parts = yyjson_mut_arr(doc);
                 yyjson_mut_arr_foreach(content, pi, pmax, part) {
-                    if (!yyjson_mut_is_obj(part)) { yyjson_mut_arr_append(new_parts, part); continue; }
+                    if (!yyjson_mut_is_obj(part)) {
+                        yyjson_mut_arr_append(new_parts, yyjson_mut_val_mut_copy(doc, part));
+                        continue;
+                    }
                     yyjson_mut_val* ptype = yyjson_mut_obj_get(part, "type");
                     const char* type_str = ptype ? yyjson_mut_get_str(ptype) : "";
                     if (!(type_str && (strcmp(type_str, "image_url") == 0 ||
                                        strcmp(type_str, "image") == 0 ||
                                        strcmp(type_str, "input_image") == 0))) {
-                        yyjson_mut_arr_append(new_parts, part);
+                        yyjson_mut_arr_append(new_parts, yyjson_mut_val_mut_copy(doc, part));
                     }
                 }
                 yyjson_mut_obj_put(msg, yyjson_mut_strcpy(doc, "content"), new_parts);

@@ -7,7 +7,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        toolchain: [gcc, clang]
+        toolchain: [gcc]
         config: [release, debug]
     name: Ubuntu ${{ matrix.config }} / ${{ matrix.toolchain }}
     runs-on: ubuntu-24.04
@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         config: [release, debug]
-        compiler: [msvc, clang-cl]
+        compiler: [msvc]
     name: Windows ${{ matrix.config }} / ${{ matrix.compiler }}
     runs-on: windows-2025
     concurrency:

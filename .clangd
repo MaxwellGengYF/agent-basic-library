@@ -1,0 +1,17 @@
+# Clangd language-server configuration.
+#
+# XMake enables AddressSanitizer automatically in debug mode, which causes
+# clangd (using the Clang frontend) to reject the Windows MSVC command line
+# because /MDd (debug runtime) is incompatible with -fsanitize=address:
+#
+#   Invalid argument '/MDd' not allowed with '-fsanitize=address'
+#   AddressSanitizer doesn't support linking with debug runtime libraries yet
+#
+# This file strips those conflicting flags for clangd indexing only; the real
+# build still uses ASan + /MDd as configured by xmake.
+CompileFlags:
+  Remove:
+    - /fsanitize=address
+    - /MDd
+  Add:
+    - /MD

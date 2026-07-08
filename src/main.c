@@ -14,9 +14,6 @@
 // mimalloc (for stats)
 #include <mimalloc.h>
 
-// glib
-#include <glib.h>
-
 // C11/C23: bool/true/false via <stdbool.h> for cross-platform compatibility
 // C23: constexpr for compile-time constants
 enum { MAX_ITEMS = 10 };
@@ -89,13 +86,6 @@ void test_mimalloc(void) {
     mi_stats_print(NULL);
 }
 
-// Test glib library
-void test_glib(void) {
-    gchar *s = g_strdup("hello from glib");
-    printf("glib: %s\n", s);
-    g_free(s);
-}
-
 // C23 features demo
 void print_c23_info(void) {
     int version = 202311;
@@ -121,7 +111,6 @@ int main(void) {
     test_yyjson();
     test_xxhash();
     test_mimalloc();
-    test_glib();
     
     printf("\nAll C23 features and ext libraries demonstrated successfully!\n");
     return 0;
