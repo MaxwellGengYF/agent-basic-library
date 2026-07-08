@@ -9,6 +9,8 @@ int run_message_sanitization_tests(void);
 int run_prompt_builder_tests(void);
 int run_conversation_loop_tests(void);
 int run_context_compressor_tests(void);
+int run_text_ops_tests(void);
+
 
 typedef struct {
     const char* name;
@@ -20,6 +22,7 @@ static test_suite suites[] = {
     {"prompt_builder",       run_prompt_builder_tests},
     {"conversation_loop",    run_conversation_loop_tests},
     {"context_compressor",   run_context_compressor_tests},
+    {"text_ops",             run_text_ops_tests},
 };
 
 int main(void) {

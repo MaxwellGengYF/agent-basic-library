@@ -475,3 +475,74 @@ char* prune_old_tool_results(const char* messages_json) {
     free_id_set(active_ids, id_count);
     return result;
 }
+
+/* ------------------------------------------------------------------ */
+/* truncate_tool_call_args_json                                        */
+/* ------------------------------------------------------------------ */
+
+/* Recursive helper: walk yyjson_mut_val and truncate long string leaves. */
+static void truncate_strings_in_val(yyjson_mut_doc* doc, yyjson_mut_val* val,
+                                     size_t head_chars) {
+    if (!val) return;
+
+    if (yyjson_mut_is_str(val)) {
+        const char* s = yyjson_mut_get_str(val);
+        if (s && strlen(s) > head_chars) {
+            /* Build truncated string: first head_chars chars + "...[truncated]" */
+            size_t prefix_len = head_chars;
+            const char* suffix = "...[truncated]";
+            size_t suffix_len = strlen(suffix);
+            size_t buf_size = prefix_len + suffix_len + 1;
+            char* buf = (char*)malloc(buf_size);
+            if (!buf) return;
+            memcpy(buf, s, prefix_len);
+            memcpy(buf + prefix_len, suffix, suffix_len);
+            buf[buf_size - 1] = '\0';
+            yyjson_mut_set_str(val, yyjson_mut_get_str(yyjson_mut_strcpy(doc, buf)));
+            free(buf);
+        }
+    } else if (yyjson_mut_is_obj(val)) {
+        yyjson_mut_val *k, *v;
+        yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(val);
+        while ((k = yyjson_mut_obj_iter_next(&iter)) != NULL) {
+            v = yyjson_mut_obj_iter_get_val(k);
+            truncate_strings_in_val(doc, v, head_chars);
+        }
+    } else if (yyjson_mut_is_arr(val)) {
+        size_t idx, max;
+        yyjson_mut_val* item;
+        yyjson_mut_arr_foreach(val, idx, max, item) {
+            truncate_strings_in_val(doc, item, head_chars);
+        }
+    }
+}
+
+char* truncate_tool_call_args_json(const char* args, size_t head_chars) {
+    if (!args) return NULL;
+    if (strlen(args) == 0) return agent_strdup("");
+
+    yyjson_doc* idoc = yyjson_read(args, strlen(args), 0);
+    if (!idoc) {
+        /* Not valid JSON — return original string (graceful fallback) */
+        return agent_strdup(args);
+    }
+
+    yyjson_mut_doc* doc = yyjson_doc_mut_copy(idoc, NULL);
+    yyjson_doc_free(idoc);
+    if (!doc) return agent_strdup(args);
+
+    yyjson_mut_val* root = yyjson_mut_doc_get_root(doc);
+    if (!root) {
+        yyjson_mut_doc_free(doc);
+        return agent_strdup(args);
+    }
+
+    /* Walk the structure and truncate long string leaves */
+    truncate_strings_in_val(doc, root, head_chars);
+
+    char* result = yyjson_mut_write(doc, 0, NULL);
+    yyjson_mut_doc_free(doc);
+
+    if (!result) return agent_strdup(args);
+    return result;
+}

@@ -40,6 +40,17 @@ AGENT_CONTEXT_COMPRESSOR_API char* build_static_fallback_summary(const char* mes
  * Returns pruned JSON string (caller must free) or NULL. */
 AGENT_CONTEXT_COMPRESSOR_API char* prune_old_tool_results(const char* messages_json);
 
+/* Shrink long string leaves inside a tool-call arguments JSON blob while
+ * preserving JSON validity.
+ *
+ * Parses the arguments JSON, walks the structure, and truncates every
+ * string leaf longer than ``head_chars`` by keeping the first
+ * ``head_chars`` characters and appending ``..."[truncated]"``.
+ * Non-string values are preserved intact. If the input is not valid
+ * JSON, returns a copy of the original string (graceful fallback).
+ * Returns NULL on allocation failure. */
+AGENT_CONTEXT_COMPRESSOR_API char* truncate_tool_call_args_json(const char* args, size_t head_chars);
+
 #ifdef __cplusplus
 }
 #endif

@@ -16,15 +16,17 @@ target("agent_core")
               "message_sanitization/*.c",
               "prompt_builder/*.c",
               "conversation_loop/*.c",
-              "context_compressor/*.c")
+              "context_compressor/*.c",
+              "text_ops/*.c")
     add_includedirs("include",
                     "message_sanitization/include",
                     "prompt_builder/include",
                     "conversation_loop/include",
                     "context_compressor/include",
+                    "text_ops/include",
                     {public = true})
     add_defines("AGENT_CORE_EXPORT_DLL")
-    add_deps("yyjson", "xxhash")
+    add_deps("yyjson")
     set_languages("c11")
     set_warnings("all")
     on_load(function(target)
