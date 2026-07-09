@@ -3,13 +3,14 @@
 #include "prompt_builder.h"
 #include <stdlib.h>
 #include <string.h>
+#include <mimalloc.h>
 
 TEST(test_truncate_content_no_truncation) {
     const char* content = "Hello, world!";
     char* result = truncate_content(content, "test.txt", 100, NULL);
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "Hello, world!");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -19,7 +20,7 @@ TEST(test_truncate_content_with_truncation) {
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "... [truncated] ...");
     ASSERT_TRUE(strlen(result) < strlen(content));
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -27,7 +28,7 @@ TEST(test_truncate_content_very_short) {
     char* result = truncate_content("Hi", "test.txt", 100, NULL);
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "Hi");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -41,7 +42,7 @@ TEST(test_truncate_content_zero_max) {
     char* result = truncate_content("Hello", "test.txt", 0, NULL);
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -50,7 +51,7 @@ TEST(test_strip_yaml_frontmatter_no_frontmatter) {
     char* result = strip_yaml_frontmatter(content);
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "Hello\nWorld");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -59,7 +60,7 @@ TEST(test_strip_yaml_frontmatter_with_frontmatter) {
     char* result = strip_yaml_frontmatter(content);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "Body content here");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -68,7 +69,7 @@ TEST(test_strip_yaml_frontmatter_empty_body) {
     char* result = strip_yaml_frontmatter(content);
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, content);
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -105,7 +106,7 @@ TEST(test_build_context_files_prompt_basic) {
     ASSERT_STR_CONTAINS(result, "# Project Context");
     ASSERT_STR_CONTAINS(result, "Section 1 content");
     ASSERT_STR_CONTAINS(result, "Section 2 content");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -114,7 +115,7 @@ TEST(test_build_context_files_prompt_single) {
     char* result = build_context_files_prompt(sections, 1);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "Only section");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 

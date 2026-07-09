@@ -44,10 +44,10 @@ typedef struct {
 static void free_tool_calls(ToolCallInfo* calls, size_t count) {
     if (!calls) return;
     for (size_t i = 0; i < count; i++) {
-        free(calls[i].id);
-        free(calls[i].name);
+        mi_free(calls[i].id);
+        mi_free(calls[i].name);
     }
-    free(calls);
+    mi_free(calls);
 }
 
 /* ------------------------------------------------------------------ */
@@ -72,7 +72,7 @@ char* sanitize_api_messages(const char* messages_json) {
 
     /* Pass 1: collect all tool_call ids and names from assistant messages */
     size_t max_calls = 256;
-    ToolCallInfo* tool_calls = (ToolCallInfo*)calloc(max_calls, sizeof(ToolCallInfo));
+    ToolCallInfo* tool_calls = (ToolCallInfo*)mi_calloc(max_calls, sizeof(ToolCallInfo));
     if (!tool_calls) {
         yyjson_mut_doc_free(doc);
         return NULL;
@@ -99,7 +99,7 @@ char* sanitize_api_messages(const char* messages_json) {
             if (id_val && yyjson_mut_is_str(id_val)) {
                 if (call_count >= max_calls) {
                     size_t new_max = max_calls * 2;
-                    ToolCallInfo* tmp = (ToolCallInfo*)realloc(tool_calls, new_max * sizeof(ToolCallInfo));
+                    ToolCallInfo* tmp = (ToolCallInfo*)mi_realloc(tool_calls, new_max * sizeof(ToolCallInfo));
                     if (!tmp) {
                         free_tool_calls(tool_calls, call_count);
                         yyjson_mut_doc_free(doc);
@@ -116,7 +116,7 @@ char* sanitize_api_messages(const char* messages_json) {
                     return NULL;
                 }
                 tool_calls[call_count].id = agent_strdup(trim_ws(raw_id));
-                free(raw_id);
+                mi_free(raw_id);
                 /* Also extract function name */
                 tool_calls[call_count].name = NULL;
                 yyjson_mut_val* fn = yyjson_mut_obj_get(tc, "function");
@@ -151,7 +151,7 @@ char* sanitize_api_messages(const char* messages_json) {
 
     /* Pass 2: filter in reverse order - remove invalid messages */
     size_t total = yyjson_mut_arr_size(root);
-    size_t* to_keep = (size_t*)calloc(total, sizeof(size_t));
+    size_t* to_keep = (size_t*)mi_calloc(total, sizeof(size_t));
     if (!to_keep) {
         free_tool_calls(tool_calls, call_count);
         yyjson_mut_doc_free(doc);
@@ -265,9 +265,9 @@ char* sanitize_api_messages(const char* messages_json) {
     }
 
     /* Remove messages we don't want (in reverse order) */
-    size_t* to_drop = (size_t*)calloc(total, sizeof(size_t));
+    size_t* to_drop = (size_t*)mi_calloc(total, sizeof(size_t));
     if (!to_drop) {
-        free(to_keep);
+        mi_free(to_keep);
         free_tool_calls(tool_calls, call_count);
         yyjson_mut_doc_free(doc);
         return NULL;
@@ -285,8 +285,8 @@ char* sanitize_api_messages(const char* messages_json) {
     for (size_t d = drop_count; d > 0; d--) {
         yyjson_mut_arr_remove(root, to_drop[d - 1]);
     }
-    free(to_drop);
-    free(to_keep);
+    mi_free(to_drop);
+    mi_free(to_keep);
 
     /* Pass 3: inject stub results for missing tool calls (appended at end) */
     size_t new_total = yyjson_mut_arr_size(root);
@@ -388,12 +388,12 @@ char* repair_message_sequence(const char* messages_json) {
                 const char* s1 = yyjson_mut_get_str(c1);
                 const char* s2 = yyjson_mut_get_str(c2);
                 size_t newlen = strlen(s1) + strlen(s2) + 1;
-                char* merged = (char*)malloc(newlen);
+                char* merged = (char*)mi_malloc(newlen);
                 if (merged) {
                     snprintf(merged, newlen, "%s%s", s1, s2);
                     yyjson_mut_obj_put(m1, yyjson_mut_strcpy(doc, "content"),
                                        yyjson_mut_strcpy(doc, merged));
-                    free(merged);
+                    mi_free(merged);
                 }
             }
 
@@ -420,12 +420,12 @@ char* repair_message_sequence(const char* messages_json) {
                     const char* s1 = yyjson_mut_get_str(rc1);
                     const char* s2 = yyjson_mut_get_str(rc2);
                     size_t newlen = strlen(s1) + strlen(s2) + 1;
-                    char* merged = (char*)malloc(newlen);
+                    char* merged = (char*)mi_malloc(newlen);
                     if (merged) {
                         snprintf(merged, newlen, "%s%s", s1, s2);
                         yyjson_mut_obj_put(m1, yyjson_mut_strcpy(doc, "reasoning_content"),
                                            yyjson_mut_strcpy(doc, merged));
-                        free(merged);
+                        mi_free(merged);
                     }
                 } else {
                     yyjson_mut_obj_put(m1, yyjson_mut_strcpy(doc, "reasoning_content"), rc2);
@@ -464,12 +464,12 @@ char* repair_message_sequence(const char* messages_json) {
             const char* s1 = yyjson_mut_get_str(c1);
             const char* s2 = yyjson_mut_get_str(c2);
             size_t newlen = strlen(s1) + strlen(s2) + 1;
-            char* merged = (char*)malloc(newlen);
+            char* merged = (char*)mi_malloc(newlen);
             if (merged) {
                 snprintf(merged, newlen, "%s%s", s1, s2);
                 yyjson_mut_obj_put(m1, yyjson_mut_strcpy(doc, "content"),
                                    yyjson_mut_strcpy(doc, merged));
-                free(merged);
+                mi_free(merged);
                 yyjson_mut_arr_remove(root, i + 1);
                 changed = 1;
                 break;
@@ -493,6 +493,6 @@ char* sanitize_and_repair_messages(const char* messages_json) {
     if (!sanitized) return NULL;
 
     char* result = repair_message_sequence(sanitized);
-    free(sanitized);
+    mi_free(sanitized);
     return result;
 }

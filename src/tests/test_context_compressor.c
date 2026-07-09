@@ -3,6 +3,7 @@
 #include "context_compressor.h"
 #include <stdlib.h>
 #include <string.h>
+#include <mimalloc.h>
 
 TEST(test_sanitize_tool_pairs_basic) {
     const char* input = "[{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_1\",\"function\":{\"name\":\"test\",\"arguments\":\"{}\"}}]},{\"role\":\"tool\",\"tool_call_id\":\"call_1\",\"content\":\"Result\"}]";
@@ -10,7 +11,7 @@ TEST(test_sanitize_tool_pairs_basic) {
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "call_1");
     ASSERT_STR_CONTAINS(result, "Result");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -19,7 +20,7 @@ TEST(test_sanitize_tool_pairs_orphan_dropped) {
     char* result = sanitize_tool_pairs(input);
     ASSERT_NOT_NULL(result);
     ASSERT_NULL(strstr(result, "orphan_id"));
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -28,7 +29,7 @@ TEST(test_sanitize_tool_pairs_missing_stub) {
     char* result = sanitize_tool_pairs(input);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "Result unavailable");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -62,7 +63,7 @@ TEST(test_build_static_fallback_summary_basic) {
     char* result = build_static_fallback_summary(input, 2);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "pruned");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -71,7 +72,7 @@ TEST(test_build_static_fallback_summary_no_prune) {
     char* result = build_static_fallback_summary(input, 0);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "0 messages");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -86,7 +87,7 @@ TEST(test_prune_old_tool_results_basic) {
     char* result = prune_old_tool_results(input);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "Old tool output cleared");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 

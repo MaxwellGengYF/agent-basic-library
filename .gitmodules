@@ -1,3 +1,7 @@
 [submodule "src/ext/yyjson"]
 	path = src/ext/yyjson
 	url = https://github.com/ibireme/yyjson
+
+[submodule "src/ext/mimalloc"]
+	path = src/ext/mimalloc
+	url = https://github.com/microsoft/mimalloc

@@ -40,7 +40,7 @@ char* truncate_content(const char* content, const char* filename,
     size_t marker_len = strlen(marker);
 
     size_t out_len = head_len + marker_len + tail_len + 1;
-    char* result = (char*)malloc(out_len);
+    char* result = (char*)mi_malloc(out_len);
     if (!result) return NULL;
 
     /* Copy head */
@@ -161,7 +161,7 @@ char* build_context_files_prompt(const char** sections, size_t section_count) {
     }
     total += 1; /* Null terminator */
 
-    char* result = (char*)malloc(total);
+    char* result = (char*)mi_malloc(total);
     if (!result) return NULL;
 
     size_t pos = 0;

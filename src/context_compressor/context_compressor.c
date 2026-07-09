@@ -83,8 +83,8 @@ static int id_in_set(const char* id, char** ids, size_t count) {
 
 static void free_id_set(char** ids, size_t count) {
     if (!ids) return;
-    for (size_t i = 0; i < count; i++) free(ids[i]);
-    free(ids);
+    for (size_t i = 0; i < count; i++) mi_free(ids[i]);
+    mi_free(ids);
 }
 
 /* ------------------------------------------------------------------ */
@@ -109,7 +109,7 @@ char* sanitize_tool_pairs(const char* messages_json) {
 
     /* Collect all tool_call_ids from assistant messages */
     size_t max_ids = 256;
-    char** call_ids = (char**)calloc(max_ids, sizeof(char*));
+    char** call_ids = (char**)mi_calloc(max_ids, sizeof(char*));
     if (!call_ids) {
         yyjson_mut_doc_free(doc);
         return NULL;
@@ -135,7 +135,7 @@ char* sanitize_tool_pairs(const char* messages_json) {
             if (id_val && yyjson_mut_is_str(id_val)) {
                 if (id_count >= max_ids) {
                     size_t new_max = max_ids * 2;
-                    char** tmp = (char**)realloc(call_ids, new_max * sizeof(char*));
+                    char** tmp = (char**)mi_realloc(call_ids, new_max * sizeof(char*));
                     if (!tmp) {
                         free_id_set(call_ids, id_count);
                         yyjson_mut_doc_free(doc);
@@ -156,7 +156,7 @@ char* sanitize_tool_pairs(const char* messages_json) {
 
     /* Remove orphan tool messages (in reverse order so indices stay valid) */
     size_t total = yyjson_mut_arr_size(root);
-    size_t* to_drop = (size_t*)calloc(total, sizeof(size_t));
+    size_t* to_drop = (size_t*)mi_calloc(total, sizeof(size_t));
     if (!to_drop) {
         free_id_set(call_ids, id_count);
         yyjson_mut_doc_free(doc);
@@ -181,7 +181,7 @@ char* sanitize_tool_pairs(const char* messages_json) {
     for (size_t d = drop_count; d > 0; d--) {
         yyjson_mut_arr_remove(root, to_drop[d - 1]);
     }
-    free(to_drop);
+    mi_free(to_drop);
 
     /* Inject stub results for missing tool calls */
     size_t new_total = yyjson_mut_arr_size(root);
@@ -334,7 +334,7 @@ char* build_static_fallback_summary(const char* messages_json,
     size_t buf_size = (size_t)prefix_len + (size_t)suffix_len +
                       (size_t)user_len + (size_t)assistant_len +
                       (size_t)tool_len + (size_t)system_len + 1;
-    char* buf = (char*)malloc(buf_size);
+    char* buf = (char*)mi_malloc(buf_size);
     if (!buf) {
         yyjson_mut_doc_free(doc);
         return NULL;
@@ -381,7 +381,7 @@ char* prune_old_tool_results(const char* messages_json) {
 
     /* Collect tool_call_ids from assistant messages */
     size_t max_ids = 256;
-    char** active_ids = (char**)calloc(max_ids, sizeof(char*));
+    char** active_ids = (char**)mi_calloc(max_ids, sizeof(char*));
     if (!active_ids) {
         yyjson_mut_doc_free(doc);
         return NULL;
@@ -407,7 +407,7 @@ char* prune_old_tool_results(const char* messages_json) {
             if (idv && yyjson_mut_is_str(idv)) {
                 if (id_count >= max_ids) {
                     size_t new_max = max_ids * 2;
-                    char** tmp = (char**)realloc(active_ids, new_max * sizeof(char*));
+                    char** tmp = (char**)mi_realloc(active_ids, new_max * sizeof(char*));
                     if (!tmp) {
                         free_id_set(active_ids, id_count);
                         yyjson_mut_doc_free(doc);
@@ -428,7 +428,7 @@ char* prune_old_tool_results(const char* messages_json) {
 
     /* Remove orphan tool results (reverse order) */
     size_t total = yyjson_mut_arr_size(root);
-    size_t* to_drop = (size_t*)calloc(total, sizeof(size_t));
+    size_t* to_drop = (size_t*)mi_calloc(total, sizeof(size_t));
     if (!to_drop) {
         free_id_set(active_ids, id_count);
         yyjson_mut_doc_free(doc);
@@ -452,7 +452,7 @@ char* prune_old_tool_results(const char* messages_json) {
     for (size_t d = drop_count; d > 0; d--) {
         yyjson_mut_arr_remove(root, to_drop[d - 1]);
     }
-    free(to_drop);
+    mi_free(to_drop);
 
     /* Replace long content with placeholder in tool results */
     size_t new_total = yyjson_mut_arr_size(root);
@@ -480,41 +480,201 @@ char* prune_old_tool_results(const char* messages_json) {
 /* truncate_tool_call_args_json                                        */
 /* ------------------------------------------------------------------ */
 
-/* Recursive helper: walk yyjson_mut_val and truncate long string leaves. */
-static void truncate_strings_in_val(yyjson_mut_doc* doc, yyjson_mut_val* val,
-                                     size_t head_chars) {
-    if (!val) return;
-
-    if (yyjson_mut_is_str(val)) {
-        const char* s = yyjson_mut_get_str(val);
-        if (s && strlen(s) > head_chars) {
-            /* Build truncated string: first head_chars chars + "...[truncated]" */
-            size_t prefix_len = head_chars;
-            const char* suffix = "...[truncated]";
-            size_t suffix_len = strlen(suffix);
-            size_t buf_size = prefix_len + suffix_len + 1;
-            char* buf = (char*)malloc(buf_size);
-            if (!buf) return;
-            memcpy(buf, s, prefix_len);
-            memcpy(buf + prefix_len, suffix, suffix_len);
-            buf[buf_size - 1] = '\0';
-            yyjson_mut_set_str(val, yyjson_mut_get_str(yyjson_mut_strcpy(doc, buf)));
-            free(buf);
-        }
-    } else if (yyjson_mut_is_obj(val)) {
-        yyjson_mut_val *k, *v;
-        yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(val);
-        while ((k = yyjson_mut_obj_iter_next(&iter)) != NULL) {
-            v = yyjson_mut_obj_iter_get_val(k);
-            truncate_strings_in_val(doc, v, head_chars);
-        }
-    } else if (yyjson_mut_is_arr(val)) {
-        size_t idx, max;
-        yyjson_mut_val* item;
-        yyjson_mut_arr_foreach(val, idx, max, item) {
-            truncate_strings_in_val(doc, item, head_chars);
+/* Helper: write a JSON-escaped string into buffer at pos.
+ * Returns the new position after the closing quote. */
+static size_t write_json_str(char* buf, size_t buf_size, size_t pos,
+                              const char* s, size_t slen) {
+    if (pos >= buf_size) return pos;
+    buf[pos++] = '"';
+    for (size_t i = 0; i < slen && pos < buf_size - 1; i++) {
+        unsigned char c = (unsigned char)s[i];
+        switch (c) {
+            case '"':  buf[pos++] = '\\'; buf[pos++] = '"'; break;
+            case '\\': buf[pos++] = '\\'; buf[pos++] = '\\'; break;
+            case '\n': buf[pos++] = '\\'; buf[pos++] = 'n'; break;
+            case '\r': buf[pos++] = '\\'; buf[pos++] = 'r'; break;
+            case '\t': buf[pos++] = '\\'; buf[pos++] = 't'; break;
+            case '\b': buf[pos++] = '\\'; buf[pos++] = 'b'; break;
+            case '\f': buf[pos++] = '\\'; buf[pos++] = 'f'; break;
+            default:
+                if (c < 0x20) {
+                    int written = snprintf(buf + pos, buf_size - pos, "\\u%04x", c);
+                    if (written > 0) pos += (size_t)written;
+                } else {
+                    buf[pos++] = s[i];
+                }
+                break;
         }
     }
+    if (pos < buf_size) buf[pos++] = '"';
+    return pos;
+}
+
+/* Helper: calculate escaped JSON string length (including surrounding quotes). */
+static size_t json_str_escaped_len(const char* s, size_t slen) {
+    size_t len = 2;
+    for (size_t i = 0; i < slen; i++) {
+        unsigned char c = (unsigned char)s[i];
+        switch (c) {
+            case '"': case '\\': case '\n': case '\r':
+            case '\t': case '\b': case '\f':
+                len += 2; break;
+            default:
+                if (c < 0x20) len += 6;
+                else len += 1;
+                break;
+        }
+    }
+    return len;
+}
+
+/* Recursive helper: walk immutable yyjson_val tree and build truncated JSON.
+ * Returns malloc'd string that caller must free. Sets out_len to string length. */
+static char* truncate_val_to_json(const yyjson_val* val, size_t head_chars,
+                                   size_t* out_len) {
+    char* result = NULL;
+    size_t len = 0;
+
+    if (yyjson_is_str(val)) {
+        const char* s = yyjson_get_str(val);
+        size_t slen = yyjson_get_len(val);
+        if (s && slen > head_chars) {
+            /* Truncate: first head_chars chars + "...[truncated]" */
+            const char* suffix = "...[truncated]";
+            size_t suffix_len = strlen(suffix);
+            size_t combined_len = head_chars + suffix_len;
+            char* combined = (char*)mi_malloc(combined_len + 1);
+            if (!combined) { *out_len = 0; return NULL; }
+            memcpy(combined, s, head_chars);
+            memcpy(combined + head_chars, suffix, suffix_len);
+            combined[combined_len] = '\0';
+            len = json_str_escaped_len(combined, combined_len);
+            result = (char*)mi_malloc(len + 1);
+            if (!result) { mi_free(combined); *out_len = 0; return NULL; }
+            size_t pos = 0;
+            pos = write_json_str(result, len + 1, pos, combined, combined_len);
+            result[pos] = '\0';
+            mi_free(combined);
+        } else {
+            /* No truncation needed */
+            len = json_str_escaped_len(s, slen);
+            result = (char*)mi_malloc(len + 1);
+            if (!result) { *out_len = 0; return NULL; }
+            size_t pos = 0;
+            pos = write_json_str(result, len + 1, pos, s, slen);
+            result[pos] = '\0';
+        }
+    } else if (yyjson_is_obj(val)) {
+        size_t count = yyjson_obj_size(val);
+        size_t obj_idx = 0, obj_max = 0;
+        const yyjson_val *key, *val2;
+
+        /* First pass: compute sizes and build sub-results */
+        size_t total = 2;
+        size_t* klens = (size_t*)mi_calloc(count * 2, sizeof(size_t));
+        char** parts = (char**)mi_calloc(count * 2, sizeof(char*));
+        if (!klens || !parts) { mi_free(klens); mi_free(parts); *out_len = 0; return NULL; }
+
+        size_t klen = 0, vlen = 0;
+        yyjson_obj_foreach(val, obj_idx, obj_max, key, val2) {
+            klen = 0; vlen = 0;
+            parts[obj_idx * 2]     = truncate_val_to_json(key, SIZE_MAX, &klen);
+            klens[obj_idx * 2]     = klen;
+            parts[obj_idx * 2 + 1] = truncate_val_to_json(val2, head_chars, &vlen);
+            klens[obj_idx * 2 + 1] = vlen;
+            if (obj_idx > 0) total += 1;
+            total += klen + 1 + vlen;
+        }
+
+        size_t out_count = obj_idx;
+        result = (char*)mi_malloc(total + 1);
+        if (!result) {
+            for (size_t i = 0; i < out_count * 2; i++) mi_free(parts[i]);
+            mi_free(klens); mi_free(parts); *out_len = 0; return NULL;
+        }
+        size_t pos = 0;
+        result[pos++] = '{';
+        for (size_t i = 0; i < out_count; i++) {
+            if (i > 0) result[pos++] = ',';
+            if (parts[i * 2]) {
+                memcpy(result + pos, parts[i * 2], klens[i * 2]);
+                pos += klens[i * 2];
+            }
+            result[pos++] = ':';
+            if (parts[i * 2 + 1]) {
+                memcpy(result + pos, parts[i * 2 + 1], klens[i * 2 + 1]);
+                pos += klens[i * 2 + 1];
+            }
+        }
+        result[pos++] = '}';
+        result[pos] = '\0';
+        len = pos;
+
+        for (size_t i = 0; i < out_count * 2; i++) mi_free(parts[i]);
+        mi_free(klens); mi_free(parts);
+    } else if (yyjson_is_arr(val)) {
+        size_t count = yyjson_arr_size(val);
+        size_t total = 2;
+        size_t arr_idx = 0, arr_max = 0;
+        const yyjson_val* item;
+
+        size_t* ilens = (size_t*)mi_calloc(count, sizeof(size_t));
+        char** items = (char**)mi_calloc(count, sizeof(char*));
+        if (!ilens || !items) { mi_free(ilens); mi_free(items); *out_len = 0; return NULL; }
+
+        yyjson_arr_foreach(val, arr_idx, arr_max, item) {
+            items[arr_idx] = truncate_val_to_json(item, head_chars, &ilens[arr_idx]);
+            if (arr_idx > 0) total += 1;
+            total += ilens[arr_idx];
+        }
+
+        size_t out_count = arr_idx;
+        result = (char*)mi_malloc(total + 1);
+        if (!result) {
+            for (size_t i = 0; i < out_count; i++) mi_free(items[i]);
+            mi_free(ilens); mi_free(items); *out_len = 0; return NULL;
+        }
+        size_t pos = 0;
+        result[pos++] = '[';
+        for (size_t i = 0; i < out_count; i++) {
+            if (i > 0) result[pos++] = ',';
+            if (items[i]) {
+                memcpy(result + pos, items[i], ilens[i]);
+                pos += ilens[i];
+            }
+        }
+        result[pos++] = ']';
+        result[pos] = '\0';
+        len = pos;
+
+        for (size_t i = 0; i < out_count; i++) mi_free(items[i]);
+        mi_free(ilens); mi_free(items);
+    } else if (yyjson_is_bool(val)) {
+        result = agent_strdup(yyjson_get_bool(val) ? "true" : "false");
+        len = yyjson_get_bool(val) ? 4 : 5;
+    } else if (yyjson_is_null(val)) {
+        result = agent_strdup("null");
+        len = 4;
+    } else if (yyjson_is_sint(val)) {
+        char buf[32];
+        len = (size_t)snprintf(buf, sizeof(buf), "%lld", (long long)yyjson_get_sint(val));
+        result = (char*)mi_malloc(len + 1);
+        if (result) { memcpy(result, buf, len); result[len] = '\0'; }
+    } else if (yyjson_is_uint(val)) {
+        char buf[32];
+        len = (size_t)snprintf(buf, sizeof(buf), "%llu", (unsigned long long)yyjson_get_uint(val));
+        result = (char*)mi_malloc(len + 1);
+        if (result) { memcpy(result, buf, len); result[len] = '\0'; }
+    } else if (yyjson_is_real(val)) {
+        char buf[64];
+        len = (size_t)snprintf(buf, sizeof(buf), "%.17g", yyjson_get_real(val));
+        result = (char*)mi_malloc(len + 1);
+        if (result) { memcpy(result, buf, len); result[len] = '\0'; }
+    }
+
+    if (!result) { *out_len = 0; return NULL; }
+    if (out_len) *out_len = len;
+    return result;
 }
 
 char* truncate_tool_call_args_json(const char* args, size_t head_chars) {
@@ -523,25 +683,18 @@ char* truncate_tool_call_args_json(const char* args, size_t head_chars) {
 
     yyjson_doc* idoc = yyjson_read(args, strlen(args), 0);
     if (!idoc) {
-        /* Not valid JSON — return original string (graceful fallback) */
         return agent_strdup(args);
     }
 
-    yyjson_mut_doc* doc = yyjson_doc_mut_copy(idoc, NULL);
-    yyjson_doc_free(idoc);
-    if (!doc) return agent_strdup(args);
-
-    yyjson_mut_val* root = yyjson_mut_doc_get_root(doc);
+    yyjson_val* root = yyjson_doc_get_root(idoc);
     if (!root) {
-        yyjson_mut_doc_free(doc);
+        yyjson_doc_free(idoc);
         return agent_strdup(args);
     }
 
-    /* Walk the structure and truncate long string leaves */
-    truncate_strings_in_val(doc, root, head_chars);
-
-    char* result = yyjson_mut_write(doc, 0, NULL);
-    yyjson_mut_doc_free(doc);
+    size_t out_len = 0;
+    char* result = truncate_val_to_json(root, head_chars, &out_len);
+    yyjson_doc_free(idoc);
 
     if (!result) return agent_strdup(args);
     return result;

@@ -102,7 +102,7 @@ static size_t tag_end(const char* content, size_t pos, size_t content_len) {
 static char* remove_range(const char* content, size_t content_len,
                           size_t start, size_t end) {
     size_t new_len = content_len - (end - start);
-    char* result = (char*)malloc(new_len + 1);
+    char* result = (char*)mi_malloc(new_len + 1);
     if (!result) return NULL;
     if (start > 0) memcpy(result, content, start);
     if (end < content_len) memcpy(result + start, content + end, content_len - end);
@@ -266,10 +266,10 @@ static char* apply_scanner_pass(const char* content, size_t len,
                                 int (*scanner)(const char*, size_t, size_t,
                                                size_t*, size_t*)) {
     size_t max_matches = 64;
-    size_t* starts = (size_t*)malloc(max_matches * sizeof(size_t));
-    size_t* ends = (size_t*)malloc(max_matches * sizeof(size_t));
+    size_t* starts = (size_t*)mi_malloc(max_matches * sizeof(size_t));
+    size_t* ends = (size_t*)mi_malloc(max_matches * sizeof(size_t));
     if (!starts || !ends) {
-        free(starts); free(ends);
+        mi_free(starts); mi_free(ends);
         return NULL;
     }
     size_t match_count = 0;
@@ -280,9 +280,9 @@ static char* apply_scanner_pass(const char* content, size_t len,
         if (scanner(content, len, pos, &mstart, &mend) && mend > mstart) {
             if (match_count >= max_matches) {
                 max_matches *= 2;
-                size_t* ns = (size_t*)realloc(starts, max_matches * sizeof(size_t));
-                size_t* ne = (size_t*)realloc(ends, max_matches * sizeof(size_t));
-                if (!ns || !ne) { free(ns ? ns : starts); free(ne ? ne : ends); return NULL; }
+                size_t* ns = (size_t*)mi_realloc(starts, max_matches * sizeof(size_t));
+                size_t* ne = (size_t*)mi_realloc(ends, max_matches * sizeof(size_t));
+                if (!ns || !ne) { mi_free(ns ? ns : starts); mi_free(ne ? ne : ends); return NULL; }
                 starts = ns; ends = ne;
             }
             starts[match_count] = mstart;
@@ -295,7 +295,7 @@ static char* apply_scanner_pass(const char* content, size_t len,
     }
 
     if (match_count == 0) {
-        free(starts); free(ends);
+        mi_free(starts); mi_free(ends);
         return agent_strdup(content);
     }
 
@@ -316,8 +316,8 @@ static char* apply_scanner_pass(const char* content, size_t len,
     size_t out_len = len;
     for (size_t i = 0; i < match_count; i++) out_len -= (ends[i] - starts[i]);
 
-    char* result = (char*)malloc(out_len + 1);
-    if (!result) { free(starts); free(ends); return NULL; }
+    char* result = (char*)mi_malloc(out_len + 1);
+    if (!result) { mi_free(starts); mi_free(ends); return NULL; }
 
     size_t out_pos = 0;
     size_t src_pos = 0;
@@ -335,13 +335,44 @@ static char* apply_scanner_pass(const char* content, size_t len,
     }
     result[out_pos] = '\0';
 
-    free(starts); free(ends);
+    mi_free(starts); mi_free(ends);
     return result;
 }
 
 static int scan_closed_reasoning(const char* content, size_t len, size_t pos,
                                  size_t* out_start, size_t* out_end) {
     return scan_closed_pair(content, len, pos, out_start, out_end, REASONING_TAGS);
+}
+
+/* Plain-text thinking...response scanner: matches the Python regex
+ * r' thinking.*? response' (case-insensitive, with DOTALL).
+ * Matches: space + 'thinking' + any chars + space + 'response'.
+ * The scanner should be called at pos where content[pos] is the leading space. */
+static int scan_plaintext_think_response(const char* content, size_t len, size_t pos,
+                                           size_t* out_start, size_t* out_end) {
+    /* Need at least space + thinking(8) + ... + space + response(8) */
+    if (pos + 18 > len) return 0;
+    if (content[pos] != ' ') return 0;
+    if (!ieq_n(content + pos + 1, "thinking", 8)) return 0;
+    unsigned char after_think = (unsigned char)content[pos + 9];
+    if (after_think != ' ' && after_think != '\t' && after_think != '\n' && after_think != '\r') {
+        /* thinking might be followed by non-space (e.g. "thinkingdrop") - still match */
+    }
+    /* Now scan forward for " response" (case-insensitive) */
+    size_t scan_start = pos + 9;
+    for (size_t i = scan_start; i + 9 < len; i++) {
+        if (content[i] == ' ' && ieq_n(content + i + 1, "response", 8)) {
+            unsigned char after_resp = (unsigned char)content[i + 9];
+            if (after_resp == ' ' || after_resp == '\t' || after_resp == '\n' || after_resp == '\r' || after_resp == '\0' || after_resp == '.' || after_resp == '!' || after_resp == '?') {
+                *out_start = pos;
+                *out_end = i + 9;
+                /* Also consume trailing whitespace */
+                while (*out_end < len && ((unsigned char)content[*out_end] <= ' ' || content[*out_end] == '.' || content[*out_end] == '!' || content[*out_end] == '?')) (*out_end)++;
+                return 1;
+            }
+        }
+    }
+    return 0;
 }
 
 /* Scan for triple-backtick thinking blocks:  thinking...  response */
@@ -397,43 +428,49 @@ char* strip_think_blocks(const char* content) {
 
     /* Pass 0: Triple-backtick thinking code blocks */
     next = apply_scanner_pass(current, strlen(current), scan_think_codeblock);
-    free(current);
+    mi_free(current);
     if (!next) return NULL;
     current = next;
 
-    /* Pass 1: Closed reasoning tag pairs */
+    	/* Pass 0b: Plain-text thinking...response patterns (case-insensitive) */
+	next = apply_scanner_pass(current, strlen(current), scan_plaintext_think_response);
+	mi_free(current);
+	if (!next) return NULL;
+	current = next;
+
+	/* Pass 1: Closed reasoning tag pairs */
     next = apply_scanner_pass(current, strlen(current), scan_closed_reasoning);
-    free(current);
+    mi_free(current);
     if (!next) return NULL;
     current = next;
 
     /* Pass 2: Closed tool-call tag pairs */
     next = apply_scanner_pass(current, strlen(current), scan_closed_toolcall);
-    free(current);
+    mi_free(current);
     if (!next) return NULL;
     current = next;
 
     /* Pass 3: <function name="...">...</function> at block boundaries */
     next = apply_scanner_pass(current, strlen(current), scan_function_block);
-    free(current);
+    mi_free(current);
     if (!next) return NULL;
     current = next;
 
     /* Pass 4: Unterminated reasoning open tag at block boundary to end */
     next = apply_scanner_pass(current, strlen(current), scan_unterminated_reasoning);
-    free(current);
+    mi_free(current);
     if (!next) return NULL;
     current = next;
 
     /* Pass 5: Stray orphan open/close reasoning tags */
     next = apply_scanner_pass(current, strlen(current), scan_stray_reasoning_tag);
-    free(current);
+    mi_free(current);
     if (!next) return NULL;
     current = next;
 
     /* Pass 6: Stray tool-call closers */
     next = apply_scanner_pass(current, strlen(current), scan_stray_toolcall_close);
-    free(current);
+    mi_free(current);
     if (!next) return NULL;
     current = next;
 
@@ -453,9 +490,9 @@ static int sort_json_val(yyjson_mut_doc* doc, yyjson_mut_val* val) {
         if (count == 0) return 1;
 
         /* Collect all key-value pairs into arrays */
-        yyjson_mut_val** keys = (yyjson_mut_val**)malloc(count * sizeof(yyjson_mut_val*));
-        yyjson_mut_val** vals = (yyjson_mut_val**)malloc(count * sizeof(yyjson_mut_val*));
-        if (!keys || !vals) { free(keys); free(vals); return 0; }
+        yyjson_mut_val** keys = (yyjson_mut_val**)mi_malloc(count * sizeof(yyjson_mut_val*));
+        yyjson_mut_val** vals = (yyjson_mut_val**)mi_malloc(count * sizeof(yyjson_mut_val*));
+        if (!keys || !vals) { mi_free(keys); mi_free(vals); return 0; }
 
         /* Snapshot all keys and values before any mutation */
         yyjson_mut_val *k;
@@ -491,7 +528,7 @@ static int sort_json_val(yyjson_mut_doc* doc, yyjson_mut_val* val) {
             yyjson_mut_obj_add(val, keys[i], vals[i]);
         }
 
-        free(keys); free(vals);
+        mi_free(keys); mi_free(vals);
     } else if (yyjson_mut_is_arr(val)) {
         size_t idx2, max;
         yyjson_mut_val* item;
@@ -562,7 +599,7 @@ char* sanitize_surrogates_str(const char* text) {
     }
 
     size_t out_len = len;
-    char* result = (char*)malloc(out_len + 1);
+    char* result = (char*)mi_malloc(out_len + 1);
     if (!result) return NULL;
 
     size_t out_pos = 0;
@@ -598,7 +635,7 @@ char* strip_non_ascii_str(const char* text) {
 
     if (ascii_count == len) return agent_strdup(text);
 
-    char* result = (char*)malloc(ascii_count + 1);
+    char* result = (char*)mi_malloc(ascii_count + 1);
     if (!result) return NULL;
 
     size_t out_pos = 0;

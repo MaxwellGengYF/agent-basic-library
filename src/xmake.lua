@@ -26,7 +26,7 @@ target("agent_core")
                     "text_ops/include",
                     {public = true})
     add_defines("AGENT_CORE_EXPORT_DLL")
-    add_deps("yyjson")
+    add_deps("yyjson", "mimalloc")
     set_languages("c11")
     set_warnings("all")
     on_load(function(target)

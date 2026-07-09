@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <mimalloc.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,7 +24,7 @@ extern "C" {
 static inline char* agent_strdup(const char* s) {
     if (!s) return NULL;
     size_t n = strlen(s) + 1;
-    char* p = (char*)malloc(n);
+    char* p = (char*)mi_malloc(n);
     if (p) memcpy(p, s, n);
     return p;
 }

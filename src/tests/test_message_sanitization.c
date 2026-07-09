@@ -3,6 +3,7 @@
 #include "message_sanitization.h"
 #include <stdlib.h>
 #include <string.h>
+#include <mimalloc.h>
 
 TEST(test_sanitize_surrogates_basic) {
     /* JSON with surrogate characters */
@@ -11,7 +12,7 @@ TEST(test_sanitize_surrogates_basic) {
     ASSERT_NOT_NULL(result);
     /* The surrogate should be replaced with U+FFFD (EF BF BD) */
     ASSERT_STR_CONTAINS(result, "\xef\xbf\xbd");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -21,7 +22,7 @@ TEST(test_sanitize_surrogates_clean) {
     char* result = sanitize_messages_surrogates(input);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "hello world");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -35,7 +36,7 @@ TEST(test_repair_tool_call_arguments_empty) {
     char* result = repair_tool_call_arguments("", "test_tool");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "{}");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -43,7 +44,7 @@ TEST(test_repair_tool_call_arguments_none) {
     char* result = repair_tool_call_arguments("None", "test_tool");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "{}");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -52,7 +53,7 @@ TEST(test_repair_tool_call_arguments_valid) {
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "key");
     ASSERT_STR_CONTAINS(result, "value");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -61,7 +62,7 @@ TEST(test_repair_tool_call_arguments_trailing_comma) {
     ASSERT_NOT_NULL(result);
     /* Should parse successfully */
     ASSERT_STR_CONTAINS(result, "key");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -71,7 +72,7 @@ TEST(test_escape_invalid_chars_in_json_strings) {
     char* result = escape_invalid_chars_in_json_strings(input);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "\\u0001");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -82,7 +83,7 @@ TEST(test_strip_images_from_messages) {
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "hello");
     ASSERT_NULL(strstr(result, "image_url"));
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -92,7 +93,7 @@ TEST(test_strip_images_tool_message) {
     char* result = strip_images_from_messages(input);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "image content removed");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 

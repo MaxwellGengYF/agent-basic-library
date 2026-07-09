@@ -26,7 +26,7 @@ static int is_utf8_surrogate(const unsigned char* s, size_t len) {
 static char* replace_surrogates_in_str(const char* input) {
     if (!input) return NULL;
     size_t len = strlen(input);
-    char* out = (char*)malloc(len * 3 + 1);
+    char* out = (char*)mi_malloc(len * 3 + 1);
     if (!out) return NULL;
     size_t j = 0;
     const unsigned char* s = (const unsigned char*)input;
@@ -50,7 +50,7 @@ static char* replace_surrogates_in_str(const char* input) {
 static char* strip_non_ascii(const char* input) {
     if (!input) return NULL;
     size_t len = strlen(input);
-    char* out = (char*)malloc(len + 1);
+    char* out = (char*)mi_malloc(len + 1);
     if (!out) return NULL;
     size_t j = 0;
     for (size_t i = 0; i < len; i++) {
@@ -104,7 +104,7 @@ char* sanitize_messages_surrogates(const char* messages_json) {
                         yyjson_mut_obj_put(msg, yyjson_mut_strcpy(doc, yyjson_mut_get_str(k)),
                                            yyjson_mut_strcpy(doc, repaired));
                     }
-                    free(repaired);
+                    mi_free(repaired);
                 }
             } else if (v && yyjson_mut_is_arr(v)) {
                 /* Walk array of content parts */
@@ -125,7 +125,7 @@ char* sanitize_messages_surrogates(const char* messages_json) {
                                         yyjson_mut_strcpy(doc, yyjson_mut_get_str(ik)),
                                         yyjson_mut_strcpy(doc, repaired));
                                 }
-                                free(repaired);
+                                mi_free(repaired);
                             }
                         }
                     }
@@ -197,16 +197,16 @@ char* repair_tool_call_arguments(const char* raw_args, const char* tool_name) {
     }
     if (open_curly > 0) {
         size_t old_len = strlen(fixed);
-        char* tmp = (char*)realloc(fixed, old_len + open_curly + 1);
-        if (!tmp) { free(fixed); return agent_strdup("{}"); }
+        char* tmp = (char*)mi_realloc(fixed, old_len + open_curly + 1);
+        if (!tmp) { mi_free(fixed); return agent_strdup("{}"); }
         fixed = tmp;
         for (int i = 0; i < open_curly; i++) fixed[old_len + i] = '}';
         fixed[old_len + open_curly] = '\0';
     }
     if (open_bracket > 0) {
         size_t old_len = strlen(fixed);
-        char* tmp = (char*)realloc(fixed, old_len + open_bracket + 1);
-        if (!tmp) { free(fixed); return agent_strdup("{}"); }
+        char* tmp = (char*)mi_realloc(fixed, old_len + open_bracket + 1);
+        if (!tmp) { mi_free(fixed); return agent_strdup("{}"); }
         fixed = tmp;
         for (int i = 0; i < open_bracket; i++) fixed[old_len + i] = ']';
         fixed[old_len + open_bracket] = '\0';
@@ -248,21 +248,21 @@ char* repair_tool_call_arguments(const char* raw_args, const char* tool_name) {
         if (mdoc) {
             char* json = yyjson_mut_write(mdoc, 0, NULL);
             yyjson_mut_doc_free(mdoc);
-            free(fixed);
+            mi_free(fixed);
             return json ? json : agent_strdup("{}");
         }
-        free(fixed);
+        mi_free(fixed);
         return agent_strdup("{}");
     }
 
-    free(fixed);
+    mi_free(fixed);
     return agent_strdup("{}");
 }
 
 char* escape_invalid_chars_in_json_strings(const char* raw) {
     if (!raw) return NULL;
     size_t len = strlen(raw);
-    char* out = (char*)malloc(len * 6 + 1);
+    char* out = (char*)mi_malloc(len * 6 + 1);
     if (!out) return NULL;
 
     size_t j = 0;
@@ -324,7 +324,7 @@ char* sanitize_messages_non_ascii(const char* messages_json) {
                 yyjson_mut_obj_put(msg, yyjson_mut_strcpy(doc, "content"),
                                    yyjson_mut_strcpy(doc, stripped));
             }
-            free(stripped);
+            mi_free(stripped);
         } else if (content && yyjson_mut_is_arr(content)) {
             size_t ci, cmax;
             yyjson_mut_val* part;
@@ -338,7 +338,7 @@ char* sanitize_messages_non_ascii(const char* messages_json) {
                         yyjson_mut_obj_put(part, yyjson_mut_strcpy(doc, "text"),
                                            yyjson_mut_strcpy(doc, stripped));
                     }
-                    free(stripped);
+                    mi_free(stripped);
                 }
             }
         }
@@ -351,7 +351,7 @@ char* sanitize_messages_non_ascii(const char* messages_json) {
                 yyjson_mut_obj_put(msg, yyjson_mut_strcpy(doc, "name"),
                                    yyjson_mut_strcpy(doc, stripped));
             }
-            free(stripped);
+            mi_free(stripped);
         }
 
         yyjson_mut_val* tcs = yyjson_mut_obj_get(msg, "tool_calls");
@@ -370,7 +370,7 @@ char* sanitize_messages_non_ascii(const char* messages_json) {
                             yyjson_mut_obj_put(fn, yyjson_mut_strcpy(doc, "arguments"),
                                                yyjson_mut_strcpy(doc, stripped));
                         }
-                        free(stripped);
+                        mi_free(stripped);
                     }
                 }
             }
@@ -393,7 +393,7 @@ char* sanitize_messages_non_ascii(const char* messages_json) {
                     yyjson_mut_obj_put(msg, yyjson_mut_strcpy(doc, key),
                                        yyjson_mut_strcpy(doc, stripped));
                 }
-                free(stripped);
+                mi_free(stripped);
             }
         }
     }
@@ -421,7 +421,7 @@ char* strip_images_from_messages(const char* messages_json) {
 
     /* First pass: find indices to delete (non-tool messages with empty content after strip) */
     size_t total = yyjson_mut_arr_size(root);
-    size_t* to_delete = (size_t*)calloc(total, sizeof(size_t));
+    size_t* to_delete = (size_t*)mi_calloc(total, sizeof(size_t));
     if (!to_delete) {
         yyjson_mut_doc_free(doc);
         return NULL;
@@ -495,7 +495,7 @@ char* strip_images_from_messages(const char* messages_json) {
     for (size_t i = del_count; i > 0; i--) {
         yyjson_mut_arr_remove(root, to_delete[i - 1]);
     }
-    free(to_delete);
+    mi_free(to_delete);
 
     char* result = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);

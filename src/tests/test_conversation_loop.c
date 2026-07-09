@@ -3,6 +3,7 @@
 #include "conversation_loop.h"
 #include <stdlib.h>
 #include <string.h>
+#include <mimalloc.h>
 
 TEST(test_sanitize_api_messages_basic) {
     const char* input = "[{\"role\":\"system\",\"content\":\"You are a helpful assistant.\"},{\"role\":\"user\",\"content\":\"Hello\"}]";
@@ -11,7 +12,7 @@ TEST(test_sanitize_api_messages_basic) {
     ASSERT_STR_CONTAINS(result, "system");
     ASSERT_STR_CONTAINS(result, "user");
     ASSERT_STR_CONTAINS(result, "Hello");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -21,7 +22,7 @@ TEST(test_sanitize_api_messages_invalid_role) {
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "Hello");
     ASSERT_NULL(strstr(result, "invalid_role"));
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -30,7 +31,7 @@ TEST(test_sanitize_api_messages_empty_tool_name) {
     char* result = sanitize_api_messages(input);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "invalid_tool_call");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -39,7 +40,7 @@ TEST(test_sanitize_api_messages_orphan_tool) {
     char* result = sanitize_api_messages(input);
     ASSERT_NOT_NULL(result);
     ASSERT_NULL(strstr(result, "nonexistent"));
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -54,7 +55,7 @@ TEST(test_repair_message_sequence_consecutive_assistant) {
     char* result = repair_message_sequence(input);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "FirstSecond");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -63,7 +64,7 @@ TEST(test_repair_message_sequence_consecutive_user) {
     char* result = repair_message_sequence(input);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "FirstSecond");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -74,7 +75,7 @@ TEST(test_repair_message_sequence_clean_passthrough) {
     ASSERT_STR_CONTAINS(result, "Hi");
     ASSERT_STR_CONTAINS(result, "Hello");
     ASSERT_STR_CONTAINS(result, "How are you?");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -83,7 +84,7 @@ TEST(test_sanitize_and_repair_messages) {
     char* result = sanitize_and_repair_messages(input);
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "invalid_tool_call");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 

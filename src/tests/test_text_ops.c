@@ -3,6 +3,7 @@
 #include "text_ops.h"
 #include <stdlib.h>
 #include <string.h>
+#include <mimalloc.h>
 
 /* ------------------------------------------------------------------ */
 /* strip_think_blocks tests                                           */
@@ -12,7 +13,7 @@ TEST(test_strip_think_blocks_null) {
     char* result = strip_think_blocks(NULL);
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -20,7 +21,7 @@ TEST(test_strip_think_blocks_empty) {
     char* result = strip_think_blocks("");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -28,7 +29,7 @@ TEST(test_strip_think_blocks_no_tags) {
     char* result = strip_think_blocks("Hello, this is normal content.");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "Hello, this is normal content.");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -37,7 +38,7 @@ TEST(test_strip_think_blocks_paired_thinking) {
     char* result = strip_think_blocks("Before \x60\x60\x60thinking content here \x60\x60\x60response after.");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "Before  after.");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -45,7 +46,7 @@ TEST(test_strip_think_blocks_paired_think) {
     char* result = strip_think_blocks("Hello <thinking>deep thoughts</thinking> world");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "Hello  world");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -53,7 +54,7 @@ TEST(test_strip_think_blocks_paired_reasoning) {
     char* result = strip_think_blocks("Before <reasoning>step by step</reasoning> after");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "Before  after");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -61,7 +62,7 @@ TEST(test_strip_think_blocks_case_insensitive) {
     char* result = strip_think_blocks("A <THINKING>UPPER CASE</THINKING> B");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "A  B");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -70,7 +71,7 @@ TEST(test_strip_think_blocks_tool_call_pair) {
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "before ");
     ASSERT_STR_CONTAINS(result, " after");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -79,7 +80,7 @@ TEST(test_strip_think_blocks_unterminated_reasoning) {
     char* result = strip_think_blocks(input);
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "Some content\n");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -87,7 +88,7 @@ TEST(test_strip_think_blocks_stray_orphan_close) {
     char* result = strip_think_blocks("content </thinking> more");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "content more");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -95,7 +96,7 @@ TEST(test_strip_think_blocks_stray_toolcall_close) {
     char* result = strip_think_blocks("hello </tool_call> world");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "hello world");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -105,7 +106,7 @@ TEST(test_strip_think_blocks_function_block) {
     ASSERT_STR_CONTAINS(result, "Some text.");
     ASSERT_STR_CONTAINS(result, "More text");
     ASSERT_STR_CONTAINS(result, "Some text.\n\nMore text");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -113,7 +114,7 @@ TEST(test_strip_think_blocks_prose_function_safe) {
     char* result = strip_think_blocks("Use <function> in JavaScript is fine");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "Use <function> in JavaScript is fine");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -125,7 +126,7 @@ TEST(test_canonical_json_sort_null) {
     char* result = canonical_json_sort(NULL);
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -133,7 +134,7 @@ TEST(test_canonical_json_sort_empty) {
     char* result = canonical_json_sort("");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -141,7 +142,7 @@ TEST(test_canonical_json_sort_already_sorted) {
     char* result = canonical_json_sort("{\"a\":1,\"b\":2}");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "{\"a\":1,\"b\":2}");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -149,7 +150,7 @@ TEST(test_canonical_json_sort_reorder) {
     char* result = canonical_json_sort("{\"z\":1,\"a\":2,\"m\":3}");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "{\"a\":2,\"m\":3,\"z\":1}");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -157,7 +158,7 @@ TEST(test_canonical_json_sort_nested) {
     char* result = canonical_json_sort("{\"z\":{\"b\":1,\"a\":2},\"a\":3}");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "{\"a\":3,\"z\":{\"a\":2,\"b\":1}}");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -165,7 +166,7 @@ TEST(test_canonical_json_sort_not_json) {
     char* result = canonical_json_sort("not json at all");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "not json at all");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -174,7 +175,7 @@ TEST(test_canonical_json_sort_array) {
     ASSERT_NOT_NULL(result);
     ASSERT_STR_CONTAINS(result, "\"a\":2");
     ASSERT_STR_CONTAINS(result, "\"b\":1");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -192,7 +193,7 @@ TEST(test_sanitize_surrogates_str_empty) {
     char* result = sanitize_surrogates_str("");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -200,7 +201,7 @@ TEST(test_sanitize_surrogates_str_clean) {
     char* result = sanitize_surrogates_str("Hello, world!");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "Hello, world!");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -212,7 +213,7 @@ TEST(test_sanitize_surrogates_str_with_surrogates) {
     ASSERT_STR_CONTAINS(result, " from clipboard");
     const char* expected_marker = "\xEF\xBF\xBD";
     ASSERT_STR_CONTAINS(result, expected_marker);
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -230,7 +231,7 @@ TEST(test_strip_non_ascii_str_empty) {
     char* result = strip_non_ascii_str("");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -238,7 +239,7 @@ TEST(test_strip_non_ascii_str_ascii_only) {
     char* result = strip_non_ascii_str("Hello, world!");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "Hello, world!");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -246,7 +247,7 @@ TEST(test_strip_non_ascii_str_with_unicode) {
     char* result = strip_non_ascii_str("Hello, w\xC3\xB6rld!");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "Hello, wrld!");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
@@ -254,7 +255,7 @@ TEST(test_strip_non_ascii_str_all_unicode) {
     char* result = strip_non_ascii_str("\xE4\xB8\xAD\xE6\x96\x87");
     ASSERT_NOT_NULL(result);
     ASSERT_EQ_STR(result, "");
-    free(result);
+    mi_free(result);
     TEST_END();
 }
 
